@@ -118,7 +118,6 @@ function Index() {
             analysis.result ? (
               <ResultCard
                 result={analysis.result}
-                query={analysis.query}
                 brandName={BRANDS.find((b) => b.id === analysis.brandId)?.name ?? ""}
               />
             ) : (
