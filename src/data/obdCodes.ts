@@ -7,6 +7,54 @@ export interface OBDCode {
   problem: string;
   symptoms: string[];
   actions: string[];
+  category?: string;
+  location?: string;
+  causes?: string[];
+}
+
+export const SEVERITY_LABEL: Record<Severity, "Low" | "Medium" | "High"> = {
+  info: "Low",
+  warning: "Medium",
+  critical: "High",
+};
+
+const CUSTOM_KEY = "obd-decoder-custom-codes";
+
+export interface CustomCode extends OBDCode {
+  brandId: string;
+}
+
+export function loadCustomCodes(): CustomCode[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomCodes(list: CustomCode[]) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+}
+
+export function addCustomCode(c: CustomCode) {
+  const list = loadCustomCodes();
+  const next = [c, ...list.filter((x) => !(x.code === c.code && x.brandId === c.brandId))];
+  saveCustomCodes(next);
+  return next;
+}
+
+export function deleteCustomCode(brandId: string, code: string) {
+  const next = loadCustomCodes().filter((x) => !(x.code === code && x.brandId === brandId));
+  saveCustomCodes(next);
+  return next;
+}
+
+export function getAllCodes(): Array<OBDCode & { brandId: string }> {
+  const built = Object.entries(CODES).flatMap(([brandId, list]) =>
+    list.map((c) => ({ ...c, brandId })),
+  );
+  return [...loadCustomCodes(), ...built];
 }
 
 export interface Brand {
