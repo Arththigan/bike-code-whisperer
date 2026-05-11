@@ -78,10 +78,19 @@ function Index() {
               </p>
             </div>
           </div>
-          <span className="hidden items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:inline-flex">
-            <ShieldCheck className="h-3.5 w-3.5 text-success" />
-            Offline Ready
-          </span>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/codes"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              <Database className="h-3.5 w-3.5" />
+              Codes
+            </Link>
+            <span className="hidden items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:inline-flex">
+              <ShieldCheck className="h-3.5 w-3.5 text-success" />
+              Offline Ready
+            </span>
+          </div>
         </header>
 
         {/* Brand selector */}
