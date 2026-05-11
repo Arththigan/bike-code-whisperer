@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Bike, ShieldCheck } from "lucide-react";
+import { Bike, Database, ShieldCheck } from "lucide-react";
 import { SplashScreen } from "@/components/SplashScreen";
 import { BrandSelector } from "@/components/BrandSelector";
 import { SearchBar } from "@/components/SearchBar";
