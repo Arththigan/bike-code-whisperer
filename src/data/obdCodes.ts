@@ -7,6 +7,54 @@ export interface OBDCode {
   problem: string;
   symptoms: string[];
   actions: string[];
+  category?: string;
+  location?: string;
+  causes?: string[];
+}
+
+export const SEVERITY_LABEL: Record<Severity, "Low" | "Medium" | "High"> = {
+  info: "Low",
+  warning: "Medium",
+  critical: "High",
+};
+
+const CUSTOM_KEY = "obd-decoder-custom-codes";
+
+export interface CustomCode extends OBDCode {
+  brandId: string;
+}
+
+export function loadCustomCodes(): CustomCode[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomCodes(list: CustomCode[]) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+}
+
+export function addCustomCode(c: CustomCode) {
+  const list = loadCustomCodes();
+  const next = [c, ...list.filter((x) => !(x.code === c.code && x.brandId === c.brandId))];
+  saveCustomCodes(next);
+  return next;
+}
+
+export function deleteCustomCode(brandId: string, code: string) {
+  const next = loadCustomCodes().filter((x) => !(x.code === code && x.brandId === brandId));
+  saveCustomCodes(next);
+  return next;
+}
+
+export function getAllCodes(): Array<OBDCode & { brandId: string }> {
+  const built = Object.entries(CODES).flatMap(([brandId, list]) =>
+    list.map((c) => ({ ...c, brandId })),
+  );
+  return [...loadCustomCodes(), ...built];
 }
 
 export interface Brand {
@@ -321,9 +369,15 @@ export const CODES: Record<string, OBDCode[]> = {
 export function lookupCode(brandId: string, query: string): OBDCode | null {
   const q = query.trim().toUpperCase();
   if (!q) return null;
+  const customs = loadCustomCodes();
+  const custom = customs.find(
+    (c) => c.code.toUpperCase() === q && (c.brandId === brandId || c.brandId === "global_obd2"),
+  );
+  if (custom) return custom;
   const brandCodes = CODES[brandId] || [];
   const inBrand = brandCodes.find((c) => c.code.toUpperCase() === q);
   if (inBrand) return inBrand;
   const global = CODES.global_obd2.find((c) => c.code.toUpperCase() === q);
   return global || null;
 }
+

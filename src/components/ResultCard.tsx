@@ -1,90 +1,116 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
-import { AlertTriangle, ArrowRight, CheckCircle2, FileQuestion, Info, ListChecks, Stethoscope, Wrench } from "lucide-react";
+import { SEVERITY_LABEL } from "@/data/obdCodes";
+import { Activity, AlertTriangle, CheckCircle2, FileQuestion, MapPin, Wrench } from "lucide-react";
 
-const sevConfig: Record<Severity, { label: string; bg: string; fg: string; icon: typeof Info }> = {
-  critical: { label: "Critical", bg: "bg-critical", fg: "text-critical-foreground", icon: AlertTriangle },
-  warning:  { label: "Warning",  bg: "bg-warning",  fg: "text-warning-foreground",  icon: AlertTriangle },
-  info:     { label: "Info",     bg: "bg-info",     fg: "text-info-foreground",     icon: Info },
+const sevPill: Record<Severity, string> = {
+  critical: "bg-critical/15 text-critical border border-critical/30",
+  warning: "bg-warning/15 text-warning border border-warning/30",
+  info: "bg-info/15 text-info border border-info/30",
 };
 
 export function ResultCard({ result, brandName }: { result: OBDCode; brandName: string }) {
-  const sev = sevConfig[result.severity];
-  const SevIcon = sev.icon;
+  const causes =
+    result.causes && result.causes.length > 0
+      ? result.causes
+      : [result.problem];
 
   return (
-    <div className="animate-fade-up overflow-hidden rounded-2xl border border-border bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
+    <div
+      className="animate-fade-up overflow-hidden rounded-2xl border border-border bg-card"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-secondary/40 p-5">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{brandName} · Diagnostic Code</div>
-          <div className="mt-1 font-mono text-3xl font-extrabold tracking-wider text-primary">{result.code}</div>
-          <div className="mt-1 text-sm font-medium text-foreground/90">{result.title}</div>
+      <div className="border-b border-border bg-secondary/30 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+              {brandName} · Diagnostic Code
+            </div>
+            <div className="mt-1 font-mono text-3xl font-extrabold tracking-wider text-primary">
+              {result.code}
+            </div>
+            <h3 className="mt-2 text-lg font-bold leading-tight text-foreground">
+              {result.title}
+            </h3>
+            {result.category && (
+              <p className="mt-0.5 text-xs text-muted-foreground">{result.category}</p>
+            )}
+          </div>
+          <span
+            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${sevPill[result.severity]}`}
+          >
+            {SEVERITY_LABEL[result.severity]} Severity
+          </span>
         </div>
-        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold uppercase tracking-wider ${sev.bg} ${sev.fg}`}>
-          <SevIcon className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {sev.label}
-        </span>
+        <p className="mt-3 text-sm leading-relaxed text-foreground/85">{result.problem}</p>
       </div>
 
-      {/* Sections */}
-      <div className="space-y-5 p-5">
-        <Section icon={Stethoscope} title="The Problem" accent="text-info">
-          <p className="text-sm leading-relaxed text-foreground/90">{result.problem}</p>
-        </Section>
-
-        <Section icon={AlertTriangle} title="Symptoms" accent="text-warning">
-          <ul className="space-y-1.5">
-            {result.symptoms.map((s, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-foreground/90">
-                <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                <span>{s}</span>
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section icon={ListChecks} title="Action Plan" accent="text-success">
-          <ol className="space-y-2">
-            {result.actions.map((a, i) => (
-              <li key={i} className="flex items-start gap-3 rounded-lg border border-border/60 bg-background/40 p-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                  {i + 1}
-                </span>
-                <span className="text-sm text-foreground/90">{a}</span>
-              </li>
-            ))}
-          </ol>
-        </Section>
+      {/* 2x2 quadrant grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2">
+        <Quadrant icon={MapPin} title="Location" accent="text-primary" border="border-b sm:border-r">
+          <p className="text-sm text-foreground/90">
+            {result.location ?? "Refer to service manual for component location."}
+          </p>
+        </Quadrant>
+        <Quadrant icon={Activity} title="Symptoms" accent="text-critical" border="border-b">
+          <BulletList items={result.symptoms} />
+        </Quadrant>
+        <Quadrant icon={AlertTriangle} title="Possible Causes" accent="text-warning" border="sm:border-r">
+          <BulletList items={causes} />
+        </Quadrant>
+        <Quadrant icon={Wrench} title="Fixes" accent="text-success" border="">
+          <BulletList items={result.actions} />
+        </Quadrant>
       </div>
     </div>
   );
 }
 
-function Section({
+function Quadrant({
   icon: Icon,
   title,
   accent,
+  border,
   children,
 }: {
-  icon: typeof Info;
+  icon: typeof MapPin;
   title: string;
   accent: string;
+  border: string;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <div className={`mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest ${accent}`}>
-        <Icon className="h-4 w-4" />
+    <div className={`p-5 border-border ${border}`}>
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full bg-background/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${accent}`}
+      >
+        <Icon className="h-3.5 w-3.5" strokeWidth={2.5} />
         {title}
-      </div>
-      {children}
+      </span>
+      <div className="mt-3">{children}</div>
     </div>
+  );
+}
+
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <ul className="space-y-1.5">
+      {items.map((s, i) => (
+        <li key={i} className="text-sm text-foreground/90">
+          <span className="mr-1.5 text-muted-foreground">•</span>
+          {s}
+        </li>
+      ))}
+    </ul>
   );
 }
 
 export function NoResultCard({ query, brandName }: { query: string; brandName: string }) {
   return (
-    <div className="animate-fade-up rounded-2xl border border-border bg-card p-6 text-center" style={{ boxShadow: "var(--shadow-card)" }}>
+    <div
+      className="animate-fade-up rounded-2xl border border-border bg-card p-6 text-center"
+      style={{ boxShadow: "var(--shadow-card)" }}
+    >
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
         <FileQuestion className="h-7 w-7 text-muted-foreground" />
       </div>
