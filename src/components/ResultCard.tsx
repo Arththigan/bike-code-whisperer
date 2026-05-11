@@ -7,7 +7,7 @@ const sevConfig: Record<Severity, { label: string; bg: string; fg: string; icon:
   info:     { label: "Info",     bg: "bg-info",     fg: "text-info-foreground",     icon: Info },
 };
 
-export function ResultCard({ result, brandName }: { result: OBDCode; query: string; brandName: string }) {
+export function ResultCard({ result, brandName }: { result: OBDCode; brandName: string }) {
   const sev = sevConfig[result.severity];
   const SevIcon = sev.icon;
 
