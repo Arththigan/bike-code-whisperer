@@ -7,12 +7,9 @@ const sevConfig: Record<Severity, { label: string; bg: string; fg: string; icon:
   info:     { label: "Info",     bg: "bg-info",     fg: "text-info-foreground",     icon: Info },
 };
 
-export function ResultCard({ result, query, brandName }: { result: OBDCode; query: string; brandName: string }) {
+export function ResultCard({ result, brandName }: { result: OBDCode; query: string; brandName: string }) {
   const sev = sevConfig[result.severity];
   const SevIcon = sev.icon;
-  const isGlobal = result.code.toUpperCase() !== query.toUpperCase()
-    ? false
-    : true; // not used; placeholder
 
   return (
     <div className="animate-fade-up overflow-hidden rounded-2xl border border-border bg-card" style={{ boxShadow: "var(--shadow-card)" }}>
