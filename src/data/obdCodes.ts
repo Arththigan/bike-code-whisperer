@@ -369,9 +369,15 @@ export const CODES: Record<string, OBDCode[]> = {
 export function lookupCode(brandId: string, query: string): OBDCode | null {
   const q = query.trim().toUpperCase();
   if (!q) return null;
+  const customs = loadCustomCodes();
+  const custom = customs.find(
+    (c) => c.code.toUpperCase() === q && (c.brandId === brandId || c.brandId === "global_obd2"),
+  );
+  if (custom) return custom;
   const brandCodes = CODES[brandId] || [];
   const inBrand = brandCodes.find((c) => c.code.toUpperCase() === q);
   if (inBrand) return inBrand;
   const global = CODES.global_obd2.find((c) => c.code.toUpperCase() === q);
   return global || null;
 }
+
