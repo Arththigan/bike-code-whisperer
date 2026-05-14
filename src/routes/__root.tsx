@@ -4,11 +4,22 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useNavigate,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 
 import appCss from "../styles.css?url";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { Sidebar, MobileNav } from "@/components/Sidebar";
+import { SplashScreen } from "@/components/SplashScreen";
+import { AuthProvider, useAuth } from "@/components/AuthProvider";
+import { useState, useEffect } from "react";
+import { Language } from "@/lib/translations";
+import { Toaster } from "sonner";
+
+let HAS_SHOWN_SPLASH = false;
 
 function NotFoundComponent() {
   return (
@@ -103,7 +114,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
         <Scripts />
       </body>
     </html>
@@ -112,10 +125,74 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { user, isLoading, logout } = useAuth();
+  const router = useRouter();
+  const location = router.state.location;
+  const navigate = useNavigate();
+
+  const [showSplash, setShowSplash] = useState(!HAS_SHOWN_SPLASH);
+
+  const handleSplashDone = () => {
+    setShowSplash(false);
+    HAS_SHOWN_SPLASH = true;
+  };
+
+  // Auth Protection & Real-time blocking check
+  useEffect(() => {
+    if (!isLoading) {
+      const isAdminPage = location.pathname.startsWith("/admin-login") || location.pathname.startsWith("/super-admin-portal");
+      const isUserPage = location.pathname === "/login";
+      const isPublicPage = isAdminPage || isUserPage;
+      
+      // Re-check isActive status from source of truth (localStorage)
+      const rawUsers = localStorage.getItem("obd-decoder-users");
+      const allUsers = rawUsers ? JSON.parse(rawUsers) : [];
+      const currentUserStatus = Array.isArray(allUsers) 
+        ? allUsers.find((u: any) => u.username === user?.username)
+        : null;
+        
+      const isBlocked = user && currentUserStatus && !currentUserStatus.isActive;
+
+      if (isBlocked && !isPublicPage) {
+        logout();
+        navigate({ to: "/login" });
+        return;
+      }
+
+      if (!user && !isPublicPage) {
+        navigate({ to: "/login" });
+      }
+
+      // Redirect admin attempt to correct login if not authenticated
+      if (location.pathname === "/super-admin-portal" && (!user || user.role !== "admin")) {
+        navigate({ to: "/admin-login" });
+      }
+    }
+  }, [user, isLoading, location.pathname]);
+
+  if (isLoading) return null;
+
+  const isAdminPortal = location.pathname.startsWith("/super-admin-portal") || location.pathname.startsWith("/admin-login");
+  const isUserLogin = location.pathname === "/login";
+  const hideNav = isAdminPortal || isUserLogin;
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <ThemeProvider>
+        <Toaster position="top-center" richColors />
+        {showSplash && <SplashScreen onDone={handleSplashDone} />}
+        <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
+          {!hideNav && (
+            <aside className="hidden sm:block h-screen sticky top-0 shrink-0">
+              <Sidebar />
+            </aside>
+          )}
+          <main className={cn("flex-1 pb-20 sm:pb-0 min-w-0", hideNav && "pb-0")}>
+            <Outlet />
+          </main>
+          {!hideNav && <MobileNav />}
+        </div>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

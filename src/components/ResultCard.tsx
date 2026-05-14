@@ -1,6 +1,8 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
 import { Activity, AlertTriangle, CheckCircle2, FileQuestion, MapPin, Wrench } from "lucide-react";
+import { useAuth } from "./AuthProvider";
+import { translations } from "@/lib/translations";
 
 const sevPill: Record<Severity, string> = {
   critical: "bg-critical/15 text-critical border border-critical/30",
@@ -9,6 +11,9 @@ const sevPill: Record<Severity, string> = {
 };
 
 export function ResultCard({ result, brandName }: { result: OBDCode; brandName: string }) {
+  const { language } = useAuth();
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
   const causes =
     result.causes && result.causes.length > 0
       ? result.causes
@@ -39,7 +44,7 @@ export function ResultCard({ result, brandName }: { result: OBDCode; brandName: 
           <span
             className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${sevPill[result.severity]}`}
           >
-            {SEVERITY_LABEL[result.severity]} Severity
+            {SEVERITY_LABEL[result.severity]} {t("severityLabel")}
           </span>
         </div>
         <p className="mt-3 text-sm leading-relaxed text-foreground/85">{result.problem}</p>
@@ -47,18 +52,20 @@ export function ResultCard({ result, brandName }: { result: OBDCode; brandName: 
 
       {/* 2x2 quadrant grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2">
-        <Quadrant icon={MapPin} title="Location" accent="text-primary" border="border-b sm:border-r">
-          <p className="text-sm text-foreground/90">
-            {result.location ?? "Refer to service manual for component location."}
+        <Quadrant icon={CheckCircle2} title={t("affectedPart")} accent="text-primary" border="border-b sm:border-r">
+          <p className="text-sm font-bold text-foreground">
+            {result.affectedPart ?? result.title.split(" Fault")[0].split(" Circuit")[0]}
           </p>
         </Quadrant>
-        <Quadrant icon={Activity} title="Symptoms" accent="text-critical" border="border-b">
+        <Quadrant icon={Activity} title={t("symptoms")} accent="text-critical" border="border-b">
           <BulletList items={result.symptoms} />
         </Quadrant>
-        <Quadrant icon={AlertTriangle} title="Possible Causes" accent="text-warning" border="sm:border-r">
-          <BulletList items={causes} />
+        <Quadrant icon={MapPin} title={t("location")} accent="text-warning" border="sm:border-r">
+          <p className="text-sm text-foreground/90">
+            {result.location ?? t("defaultLocation")}
+          </p>
         </Quadrant>
-        <Quadrant icon={Wrench} title="Fixes" accent="text-success" border="">
+        <Quadrant icon={Wrench} title={t("actions")} accent="text-success" border="">
           <BulletList items={result.actions} />
         </Quadrant>
       </div>
@@ -106,6 +113,13 @@ function BulletList({ items }: { items: string[] }) {
 }
 
 export function NoResultCard({ query, brandName }: { query: string; brandName: string }) {
+  const { language } = useAuth();
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
+  const description = t("noDataDescription")
+    .replace("{code}", query)
+    .replace("{brand}", brandName);
+
   return (
     <div
       className="animate-fade-up rounded-2xl border border-border bg-card p-6 text-center"
@@ -114,18 +128,18 @@ export function NoResultCard({ query, brandName }: { query: string; brandName: s
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
         <FileQuestion className="h-7 w-7 text-muted-foreground" />
       </div>
-      <h3 className="text-lg font-bold">No Data Found</h3>
+      <h3 className="text-lg font-bold">{t("noDataFound")}</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Code <span className="font-mono text-foreground">{query}</span> not found in {brandName} or Global OBD2 database.
+        {description}
       </p>
       <div className="mx-auto mt-4 max-w-sm rounded-xl border border-border/60 bg-background/40 p-4 text-left">
         <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-warning">
-          <Wrench className="h-4 w-4" /> Suggested Next Step
+          <Wrench className="h-4 w-4" /> {t("suggestedNextStep")}
         </div>
         <ul className="space-y-1.5 text-sm text-foreground/90">
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />Wiring harness & connectors check pannunga.</li>
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />Battery voltage & ground points verify pannunga.</li>
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />Code-a manufacturer service manual-la cross-check pannunga.</li>
+          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction1")}</li>
+          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction2")}</li>
+          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction3")}</li>
         </ul>
       </div>
     </div>

@@ -1,12 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Bike, Database, ShieldCheck } from "lucide-react";
-import { SplashScreen } from "@/components/SplashScreen";
 import { BrandSelector } from "@/components/BrandSelector";
 import { SearchBar } from "@/components/SearchBar";
 import { NoResultCard, ResultCard } from "@/components/ResultCard";
 import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/components/RecentHistory";
-import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
+import { BRANDS, lookupCode, saveToCache, type OBDCode } from "@/data/obdCodes";
+import { analyzeCodeWithAI } from "@/lib/gemini";
+import { useAuth } from "@/components/AuthProvider";
+import { translations } from "@/lib/translations";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -19,10 +20,11 @@ interface AnalysisState {
 }
 
 function Index() {
-  const [showSplash, setShowSplash] = useState(true);
   const [brandId, setBrandId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisState | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const { language } = useAuth();
 
   useEffect(() => {
     setHistory(loadHistory());
@@ -34,13 +36,27 @@ function Index() {
     if (brandId) localStorage.setItem("obd-decoder-last-brand", brandId);
   }, [brandId]);
 
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
   const brandName = useMemo(
     () => BRANDS.find((b) => b.id === brandId)?.name ?? "",
     [brandId],
   );
 
-  const runAnalysis = (q: string, bId: string) => {
-    const result = lookupCode(bId, q);
+  const runAnalysis = async (q: string, bId: string) => {
+    setIsAnalyzing(true);
+    setAnalysis(null);
+    
+    const dbResult = lookupCode(bId, q);
+    const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
+    const aiResult = await analyzeCodeWithAI(bName, q, dbResult, language);
+    
+    let result = aiResult || dbResult;
+    
+    if (aiResult && !dbResult) {
+      saveToCache({ ...aiResult, brandId: bId });
+    }
+
     setAnalysis({ query: q, brandId: bId, result });
 
     if (result) {
@@ -50,6 +66,9 @@ function Index() {
       setHistory(next);
       saveHistory(next);
     }
+    
+    setIsAnalyzing(false);
+    
     setTimeout(() => {
       document.getElementById("result-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
@@ -57,57 +76,35 @@ function Index() {
 
   return (
     <>
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
-
-      <main className="mx-auto max-w-3xl px-4 pb-16 pt-6 sm:pt-10">
-        {/* Header */}
-        <header className="mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-xl"
-              style={{ background: "var(--gradient-primary)" }}
-            >
-              <Bike className="h-6 w-6 text-primary-foreground" strokeWidth={2.4} />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold leading-tight">
-                OBD<span className="text-primary">-</span>Decoder
-              </h1>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Bike DTC Lookup
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/codes"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              <Database className="h-3.5 w-3.5" />
-              Codes
-            </Link>
-            <span className="hidden items-center gap-1.5 rounded-full border border-border bg-card/60 px-3 py-1.5 text-[11px] font-medium text-muted-foreground sm:inline-flex">
-              <ShieldCheck className="h-3.5 w-3.5 text-success" />
-              Offline Ready
-            </span>
-          </div>
-        </header>
-
+      <main className="w-full px-10 pb-16 pt-8 max-w-[1400px]">
+        
         {/* Brand selector */}
         <section className="mb-7">
+          <div className="mb-3 px-1">
+            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground transition-colors">
+              {t("selectBrand")}
+            </label>
+          </div>
           <BrandSelector selected={brandId} onSelect={setBrandId} />
         </section>
 
         {/* Search */}
-        <section className="mb-7 rounded-2xl border border-border bg-card/60 p-5" style={{ boxShadow: "var(--shadow-card)" }}>
+        <section className="mb-7">
           <SearchBar
             disabled={!brandId}
             onAnalyze={(q) => brandId && runAnalysis(q, brandId)}
+            label={t("searchPlaceholder")}
+            buttonText={t("analyze")}
           />
         </section>
 
         {/* History */}
         <section className="mb-7">
+          <div className="mb-3 px-1">
+            <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground transition-colors">
+              {t("history")}
+            </label>
+          </div>
           <RecentHistory
             items={history}
             onClear={() => {
@@ -123,7 +120,13 @@ function Index() {
 
         {/* Result */}
         <section id="result-anchor">
-          {analysis && (
+          {isAnalyzing && (
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <p className="text-sm font-medium text-muted-foreground">Gemini AI is analyzing the code...</p>
+            </div>
+          )}
+          {analysis && !isAnalyzing && (
             analysis.result ? (
               <ResultCard
                 result={analysis.result}

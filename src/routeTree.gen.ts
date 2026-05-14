@@ -9,12 +9,36 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SuperAdminPortalRouteImport } from './routes/super-admin-portal'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as CodesRouteImport } from './routes/codes'
+import { Route as AdminLoginRouteImport } from './routes/admin-login'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SuperAdminPortalRoute = SuperAdminPortalRouteImport.update({
+  id: '/super-admin-portal',
+  path: '/super-admin-portal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CodesRoute = CodesRouteImport.update({
   id: '/codes',
   path: '/codes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminLoginRoute = AdminLoginRouteImport.update({
+  id: '/admin-login',
+  path: '/admin-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -25,37 +49,100 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin-login': typeof AdminLoginRoute
   '/codes': typeof CodesRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
+  '/super-admin-portal': typeof SuperAdminPortalRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin-login': typeof AdminLoginRoute
   '/codes': typeof CodesRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
+  '/super-admin-portal': typeof SuperAdminPortalRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin-login': typeof AdminLoginRoute
   '/codes': typeof CodesRoute
+  '/login': typeof LoginRoute
+  '/settings': typeof SettingsRoute
+  '/super-admin-portal': typeof SuperAdminPortalRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/codes'
+  fullPaths:
+    | '/'
+    | '/admin-login'
+    | '/codes'
+    | '/login'
+    | '/settings'
+    | '/super-admin-portal'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/codes'
-  id: '__root__' | '/' | '/codes'
+  to:
+    | '/'
+    | '/admin-login'
+    | '/codes'
+    | '/login'
+    | '/settings'
+    | '/super-admin-portal'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin-login'
+    | '/codes'
+    | '/login'
+    | '/settings'
+    | '/super-admin-portal'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminLoginRoute: typeof AdminLoginRoute
   CodesRoute: typeof CodesRoute
+  LoginRoute: typeof LoginRoute
+  SettingsRoute: typeof SettingsRoute
+  SuperAdminPortalRoute: typeof SuperAdminPortalRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/super-admin-portal': {
+      id: '/super-admin-portal'
+      path: '/super-admin-portal'
+      fullPath: '/super-admin-portal'
+      preLoaderRoute: typeof SuperAdminPortalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/codes': {
       id: '/codes'
       path: '/codes'
       fullPath: '/codes'
       preLoaderRoute: typeof CodesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin-login': {
+      id: '/admin-login'
+      path: '/admin-login'
+      fullPath: '/admin-login'
+      preLoaderRoute: typeof AdminLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -70,8 +157,22 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminLoginRoute: AdminLoginRoute,
   CodesRoute: CodesRoute,
+  LoginRoute: LoginRoute,
+  SettingsRoute: SettingsRoute,
+  SuperAdminPortalRoute: SuperAdminPortalRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
