@@ -10,10 +10,13 @@ import {
   Check,
   AlertCircle,
   Moon,
-  Sun
+  Sun,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { exportCodesAsCSV, importCodesFromCSV } from "@/lib/dataUtils";
+import { exportCodesAsCSV, parseCSVToCodes } from "@/lib/dataUtils";
+import { fetchAllFirebaseCodes, bulkImportCodes } from "@/lib/firebaseDb";
+import { getAllBuiltInCodes } from "@/data/obdCodes";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
 
@@ -27,6 +30,7 @@ function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("profile");
   const { theme, setTheme } = useTheme();
   const { user, language } = useAuth();
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const [profile, setProfile] = useState({
     name: user?.name || "John Doe",
@@ -43,21 +47,33 @@ function SettingsPage() {
     if (!file) return;
 
     try {
-      const result = await importCodesFromCSV(file);
+      setIsProcessing(true);
+      const { codes, brand } = await parseCSVToCodes(file);
+      const count = await bulkImportCodes(codes);
       setImportStatus({ 
         type: 'success', 
-        message: `Successfully imported ${result.count} codes for ${result.brand}!` 
+        message: `Successfully imported ${count} codes for ${brand || 'various brands'}!` 
       });
     } catch (err) {
       setImportStatus({ 
         type: 'error', 
         message: err instanceof Error ? err.message : "Failed to import codes." 
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleExport = () => {
-    exportCodesAsCSV();
+  const handleExport = async () => {
+    try {
+      setIsProcessing(true);
+      const builtIn = getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false }));
+      const custom = await fetchAllFirebaseCodes();
+      const all = [...custom.map(c => ({...c, isCustom: true})), ...builtIn];
+      exportCodesAsCSV(all);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -179,10 +195,10 @@ function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <label className="cursor-pointer inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors">
-                      <Upload className="mr-2 h-3.5 w-3.5" />
+                    <label className={cn("cursor-pointer inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors", isProcessing && "opacity-50 pointer-events-none")}>
+                      {isProcessing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-2 h-3.5 w-3.5" />}
                       {language === "tamil" ? "கோப்பைத் தேர்ந்தெடு" : "Choose File"}
-                      <input type="file" accept=".csv" className="hidden" onChange={handleImport} />
+                      <input type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={isProcessing} />
                     </label>
                   </div>
                 </div>
@@ -199,9 +215,10 @@ function SettingsPage() {
                   </div>
                   <button 
                     onClick={handleExport}
-                    className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-xs font-bold hover:bg-accent transition-colors"
+                    disabled={isProcessing}
+                    className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-xs font-bold hover:bg-accent transition-colors disabled:opacity-50"
                   >
-                    <Download className="mr-2 h-3.5 w-3.5" />
+                    {isProcessing ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
                     Export CSV
                   </button>
                 </div>

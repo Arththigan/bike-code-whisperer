@@ -1,17 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { Plus, Search, Trash2, ArrowLeft } from "lucide-react";
+import { useMemo, useState, useEffect, useRef } from "react";
+import { Plus, Search, Trash2, ArrowLeft, Upload, Download, Loader2, Pencil } from "lucide-react";
+import { toast } from "sonner";
 import {
   BRANDS,
-  CODES,
   SEVERITY_LABEL,
-  addCustomCode,
-  deleteCustomCode,
-  loadCustomCodes,
-  type CustomCode,
+  getAllBuiltInCodes,
   type OBDCode,
   type Severity,
 } from "@/data/obdCodes";
+import {
+  subscribeToFirebaseCodes,
+  addFirebaseCode,
+  deleteFirebaseCode,
+  bulkImportCodes,
+  type FirebaseCode,
+} from "@/lib/firebaseDb";
+import { parseCSVToCodes, exportCodesAsCSV } from "@/lib/dataUtils";
 
 export const Route = createFileRoute("/codes")({
   component: CodesPage,
@@ -26,23 +31,108 @@ const sevPill: Record<Severity, string> = {
 };
 
 function CodesPage() {
-  const [custom, setCustom] = useState<CustomCode[]>(() => loadCustomCodes());
+  const [firebaseCodes, setFirebaseCodes] = useState<FirebaseCode[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingCode, setEditingCode] = useState<FirebaseCode | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cancelImportRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    setIsLoading(true);
+    // Subscribe to real-time updates (offline-first & instant)
+    const unsubscribe = subscribeToFirebaseCodes(
+      (codes) => {
+        setFirebaseCodes(codes);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Firestore sync subscription failed:", error);
+        setIsLoading(false);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddCode = async (c: FirebaseCode) => {
+    setIsLoading(true);
+    await addFirebaseCode(c);
+    toast.success(editingCode ? "Code updated successfully!" : "Code added to Firebase!");
+    setShowForm(false);
+    setEditingCode(null);
+    setIsLoading(false);
+  };
+
+  const handleDeleteCode = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this custom code?")) return;
+    setIsLoading(true);
+    await deleteFirebaseCode(id);
+    toast.success("Code deleted!");
+    setIsLoading(false);
+  };
+
+  const handleEditClick = (c: FirebaseCode) => {
+    setEditingCode(c);
+    setShowForm(true);
+    setTimeout(() => {
+      document.getElementById("form-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsImporting(true);
+      cancelImportRef.current = false;
+      const { codes, brand } = await parseCSVToCodes(file);
+      if (codes.length === 0) {
+        toast.error("No valid codes found in CSV");
+        return;
+      }
+
+      setImportProgress({ current: 0, total: codes.length });
+      const count = await bulkImportCodes(codes, (current, total) => {
+        if (!cancelImportRef.current) {
+          setImportProgress({ current, total });
+        }
+      }, cancelImportRef);
+
+      // Only display success if cancellation was not triggered
+      if (!cancelImportRef.current) {
+        toast.success(`Successfully imported ${count} codes for ${brand || "various brands"}`);
+      }
+    } catch (error) {
+      if (!cancelImportRef.current) {
+        toast.error(error instanceof Error ? error.message : "Error importing codes");
+      }
+      console.error(error);
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const all = useMemo(() => {
-    const built = Object.entries(CODES).flatMap(([brandId, list]) =>
-      list.map((c) => ({ ...c, brandId, isCustom: false })),
-    );
-    const cust = custom.map((c) => ({ ...c, isCustom: true }));
-    return [...cust, ...built];
-  }, [custom]);
+    const builtIn = getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false }));
+    const custom = firebaseCodes.map((c) => ({ ...c, isCustom: true }));
+    return [...custom, ...builtIn];
+  }, [firebaseCodes]);
 
   const filtered = all.filter((c) => {
     const sevMatch = filter === "all" || SEVERITY_LABEL[c.severity] === filter;
     const q = query.trim().toUpperCase();
-    const qMatch = !q || c.code.toUpperCase().includes(q) || c.title.toUpperCase().includes(q);
+    const brandName = BRANDS.find((b) => b.id === c.brandId)?.name ?? "Global OBD2";
+    const qMatch = !q || 
+      c.code.toUpperCase().includes(q) || 
+      c.title.toUpperCase().includes(q) || 
+      brandName.toUpperCase().includes(q);
     return sevMatch && qMatch;
   });
 
@@ -51,40 +141,119 @@ function CodesPage() {
       <div className="mb-6 flex items-center justify-between">
         <Link
           to="/"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" /> Back
+          <ArrowLeft className="h-4 w-4" /> Back to Search
         </Link>
+        <div className="flex gap-2">
+           <input 
+              type="file" 
+              accept=".csv" 
+              className="hidden" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+           />
+           <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting || isLoading}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold bg-secondary text-foreground hover:bg-secondary/80 transition-colors border border-border disabled:opacity-50"
+           >
+              {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              Import CSV
+           </button>
+           <button
+              onClick={() => exportCodesAsCSV(all)}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold bg-secondary text-foreground hover:bg-secondary/80 transition-colors border border-border disabled:opacity-50"
+           >
+              <Download className="h-4 w-4" />
+              Export
+           </button>
+        </div>
+      {isImporting && importProgress && (
+        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 animate-in fade-in slide-in-from-top-3 duration-300" style={{ boxShadow: "var(--shadow-glow)" }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              Importing DTC Codes to Cloud Database...
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-extrabold text-primary bg-primary/10 px-2.5 py-0.5 rounded">
+                {Math.round(((importProgress.current ?? 0) / importProgress.total) * 100)}%
+              </span>
+              <button
+                onClick={() => {
+                  cancelImportRef.current = true;
+                  // Instantly clear importing states to make UI responsive in 0ms!
+                  setIsImporting(false);
+                  setImportProgress(null);
+                  toast.dismiss();
+                  toast.warning("Import cancelled! Database synchronization halted.");
+                }}
+                className="text-[9px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive hover:text-white px-2.5 py-1 rounded-lg transition-all duration-150 active:scale-95 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+          <div className="h-2.5 w-full rounded-full bg-secondary overflow-hidden border border-border/50 mb-2">
+            <div 
+              className="h-full bg-primary rounded-full transition-all duration-300 ease-out"
+              style={{ 
+                width: `${((importProgress.current ?? 0) / importProgress.total) * 100}%`,
+                background: "var(--gradient-primary)" 
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-between text-[10px] font-mono font-bold uppercase tracking-wider text-muted-foreground">
+            <span>Progress: {importProgress.current ?? 0} / {importProgress.total} Codes Imported</span>
+            <span className="text-primary">{Math.round(((importProgress.current ?? 0) / importProgress.total) * 100)}% Completed</span>
+          </div>
+        </div>
+      )}
       </div>
 
       {/* Add new code header */}
       <section className="mb-6 flex items-center justify-between">
         <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground">
-          Add New Code
+          Code Dictionary
         </h2>
         <button
-          onClick={() => setShowForm((v) => !v)}
-          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-primary-foreground"
+          onClick={() => {
+            if (showForm && editingCode) {
+              setEditingCode(null);
+            } else {
+              setShowForm((v) => !v);
+              setEditingCode(null);
+            }
+          }}
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 transition-transform active:scale-95"
           style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
         >
-          <Plus className="h-4 w-4" strokeWidth={3} />
-          {showForm ? "Close" : "Add Code"}
+          {showForm ? <ArrowLeft className="h-4 w-4" strokeWidth={3} /> : <Plus className="h-4 w-4" strokeWidth={3} />}
+          {showForm ? (editingCode ? "Back" : "Cancel") : "Add Custom Code"}
         </button>
       </section>
 
+      <div id="form-anchor" />
       {showForm && (
-        <AddCodeForm
-          onAdd={(c) => {
-            setCustom(addCustomCode(c));
+        <AddCodeForm 
+          onAdd={handleAddCode} 
+          isLoading={isLoading} 
+          initialData={editingCode}
+          onCancel={() => {
             setShowForm(false);
+            setEditingCode(null);
           }}
         />
       )}
 
       {/* Filter bar */}
       <section className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground">
-          All Codes <span className="ml-1 text-foreground/60">({filtered.length})</span>
+        <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground flex items-center gap-2">
+          All Codes <span className="text-foreground/60 rounded-full bg-secondary px-2 py-0.5">{filtered.length}</span>
+          {isLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
@@ -104,7 +273,7 @@ function CodesPage() {
                 className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${
                   filter === f
                     ? "bg-primary text-primary-foreground"
-                    : "border border-border bg-card text-muted-foreground hover:text-foreground"
+                    : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
                 }`}
               >
                 {f === "all" ? "All" : f}
@@ -120,16 +289,24 @@ function CodesPage() {
             key={`${c.brandId}-${c.code}-${c.isCustom ? "x" : "b"}`}
             code={c}
             onDelete={
+              c.isCustom && c.id
+                ? () => handleDeleteCode(c.id!)
+                : undefined
+            }
+            onEdit={
               c.isCustom
-                ? () => setCustom(deleteCustomCode(c.brandId, c.code))
+                ? () => handleEditClick(c)
                 : undefined
             }
           />
         ))}
-        {filtered.length === 0 && (
-          <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
-            No codes match your filter.
-          </p>
+        {filtered.length === 0 && !isLoading && (
+          <div className="col-span-full py-16 text-center rounded-3xl border border-dashed border-border bg-card/30 flex flex-col items-center justify-center gap-3">
+             <Search className="h-8 w-8 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground font-medium">
+              No codes match your filter.
+            </p>
+          </div>
         )}
       </section>
     </main>
@@ -139,9 +316,11 @@ function CodesPage() {
 function CodeTile({
   code,
   onDelete,
+  onEdit,
 }: {
-  code: OBDCode & { brandId: string; isCustom?: boolean };
+  code: OBDCode & { brandId: string; isCustom?: boolean; isAIGenerated?: boolean };
   onDelete?: () => void;
+  onEdit?: () => void;
 }) {
   const brand = BRANDS.find((b) => b.id === code.brandId)?.name ?? "Global OBD2";
   return (
@@ -153,41 +332,103 @@ function CodeTile({
         <span className="font-mono text-lg font-extrabold tracking-wider text-primary">
           {code.code}
         </span>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${sevPill[code.severity]}`}
-        >
-          {SEVERITY_LABEL[code.severity]}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+            <span
+            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${sevPill[code.severity]}`}
+            >
+            {SEVERITY_LABEL[code.severity]}
+            </span>
+            {code.isCustom && (
+                <span className="rounded-full px-2 py-0.5 text-[8px] font-bold uppercase bg-secondary text-muted-foreground border border-border">
+                    {code.isAIGenerated ? "AI Cached" : "Custom"}
+                </span>
+            )}
+        </div>
       </div>
-      <h3 className="mt-2 text-sm font-bold leading-snug text-foreground">{code.title}</h3>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {brand}
-        {code.category ? ` · ${code.category}` : ""}
-      </p>
-      {onDelete && (
-        <button
-          onClick={onDelete}
-          className="absolute bottom-3 right-3 rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-          aria-label="Delete custom code"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      )}
+      <h3 className="mt-2 text-sm font-bold leading-snug text-foreground line-clamp-2">{code.title}</h3>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center rounded-md bg-secondary/60 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border border-border/40">
+          {brand}
+        </span>
+        {code.category && (
+          <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary border border-primary/20">
+            {code.category}
+          </span>
+        )}
+      </div>
+      
+      {/* Edit and Delete Buttons visible on hover */}
+      <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+            aria-label="Edit custom code"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+            aria-label="Delete custom code"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
     </article>
   );
 }
 
-function AddCodeForm({ onAdd }: { onAdd: (c: CustomCode) => void }) {
-  const [code, setCode] = useState("");
-  const [title, setTitle] = useState("");
-  const [brandId, setBrandId] = useState("global_obd2");
-  const [severity, setSeverity] = useState<Severity>("warning");
-  const [category, setCategory] = useState("");
-  const [location, setLocation] = useState("");
-  const [problem, setProblem] = useState("");
-  const [symptoms, setSymptoms] = useState("");
-  const [causes, setCauses] = useState("");
-  const [actions, setActions] = useState("");
+function AddCodeForm({
+  onAdd,
+  isLoading,
+  initialData,
+  onCancel,
+}: {
+  onAdd: (c: FirebaseCode) => void;
+  isLoading: boolean;
+  initialData?: FirebaseCode | null;
+  onCancel?: () => void;
+}) {
+  const [code, setCode] = useState(initialData?.code ?? "");
+  const [title, setTitle] = useState(initialData?.title ?? "");
+  const [brandId, setBrandId] = useState(initialData?.brandId ?? "global_obd2");
+  const [severity, setSeverity] = useState<Severity>(initialData?.severity ?? "warning");
+  const [category, setCategory] = useState(initialData?.category ?? "");
+  const [location, setLocation] = useState(initialData?.location ?? "");
+  const [problem, setProblem] = useState(initialData?.problem ?? "");
+  const [symptoms, setSymptoms] = useState(initialData?.symptoms?.join("\n") ?? "");
+  const [causes, setCauses] = useState(initialData?.causes?.join("\n") ?? "");
+  const [actions, setActions] = useState(initialData?.actions?.join("\n") ?? "");
+
+  useEffect(() => {
+    if (initialData) {
+      setCode(initialData.code);
+      setTitle(initialData.title);
+      setBrandId(initialData.brandId);
+      setSeverity(initialData.severity);
+      setCategory(initialData.category ?? "");
+      setLocation(initialData.location ?? "");
+      setProblem(initialData.problem ?? "");
+      setSymptoms(initialData.symptoms?.join("\n") ?? "");
+      setCauses(initialData.causes?.join("\n") ?? "");
+      setActions(initialData.actions?.join("\n") ?? "");
+    } else {
+      setCode("");
+      setTitle("");
+      setBrandId("global_obd2");
+      setSeverity("warning");
+      setCategory("");
+      setLocation("");
+      setProblem("");
+      setSymptoms("");
+      setCauses("");
+      setActions("");
+    }
+  }, [initialData]);
 
   const split = (s: string) =>
     s
@@ -213,62 +454,80 @@ function AddCodeForm({ onAdd }: { onAdd: (c: CustomCode) => void }) {
   };
 
   const inputCls =
-    "w-full h-10 rounded-lg border border-border bg-input px-3 text-sm focus:border-primary focus:outline-none";
+    "w-full h-10 rounded-lg border border-border bg-input px-3 text-sm focus:border-primary focus:outline-none transition-colors";
   const taCls =
-    "w-full min-h-20 rounded-lg border border-border bg-input p-3 text-sm focus:border-primary focus:outline-none";
+    "w-full min-h-20 rounded-lg border border-border bg-input p-3 text-sm focus:border-primary focus:outline-none transition-colors";
 
   return (
     <form
       onSubmit={submit}
-      className="mb-8 grid grid-cols-1 gap-3 rounded-2xl border border-border bg-card/60 p-5 sm:grid-cols-2"
+      className="mb-8 grid grid-cols-1 gap-4 rounded-2xl border border-border bg-card/60 p-6 sm:grid-cols-2 animate-in slide-in-from-top-2 fade-in duration-300"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
-      <Field label="Code">
-        <input className={inputCls + " font-mono uppercase"} value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. P0123" />
+      <div className="sm:col-span-2 border-b border-border pb-2 mb-2 flex items-center justify-between">
+         <div>
+           <h3 className="text-sm font-bold">{initialData ? "Edit Diagnostic Code" : "New Diagnostic Code"}</h3>
+           <p className="text-xs text-muted-foreground">{initialData ? "Modify code details and save changes." : "Add a code to the shared global dictionary."}</p>
+         </div>
+         {onCancel && (
+           <button 
+             type="button" 
+             onClick={onCancel}
+             className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 bg-secondary/50"
+           >
+             Cancel
+           </button>
+         )}
+      </div>
+
+      <Field label="DTC Code *">
+        <input required disabled={isLoading || !!initialData} className={inputCls + " font-mono uppercase"} value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. P0123" />
       </Field>
-      <Field label="Title">
-        <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Throttle Position Sensor High Input" />
+      <Field label="Fault Title *">
+        <input required disabled={isLoading} className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Throttle Position Sensor High Input" />
       </Field>
-      <Field label="Brand">
-        <select className={inputCls} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-          <option value="global_obd2">Global OBD2</option>
+      <Field label="Motorcycle Brand *">
+        <select disabled={isLoading || !!initialData} className={inputCls} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+          <option value="global_obd2">Global OBD2 / Generic</option>
           {BRANDS.map((b) => (
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
       </Field>
-      <Field label="Severity">
-        <select className={inputCls} value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
-          <option value="info">Low</option>
-          <option value="warning">Medium</option>
-          <option value="critical">High</option>
+      <Field label="Severity Level *">
+        <select disabled={isLoading} className={inputCls} value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
+          <option value="info">Low (Info)</option>
+          <option value="warning">Medium (Warning)</option>
+          <option value="critical">High (Critical)</option>
         </select>
       </Field>
-      <Field label="Category">
-        <input className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Engine / Throttle" />
+      <Field label="Category / System">
+        <input disabled={isLoading} className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Engine, Throttle, ABS" />
       </Field>
-      <Field label="Location">
-        <input className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Engine front - Left side" />
+      <Field label="Component Location">
+        <input disabled={isLoading} className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Engine front - Left side" />
       </Field>
-      <Field label="Problem" full>
-        <textarea className={taCls} value={problem} onChange={(e) => setProblem(e.target.value)} />
+      <Field label="Problem Description" full>
+        <textarea disabled={isLoading} className={taCls} value={problem} onChange={(e) => setProblem(e.target.value)} placeholder="Briefly describe what this fault means..." />
       </Field>
       <Field label="Symptoms (one per line)">
-        <textarea className={taCls} value={symptoms} onChange={(e) => setSymptoms(e.target.value)} />
+        <textarea disabled={isLoading} className={taCls} value={symptoms} onChange={(e) => setSymptoms(e.target.value)} placeholder="- Hard starting&#10;- Poor fuel economy" />
       </Field>
       <Field label="Possible Causes (one per line)">
-        <textarea className={taCls} value={causes} onChange={(e) => setCauses(e.target.value)} />
+        <textarea disabled={isLoading} className={taCls} value={causes} onChange={(e) => setCauses(e.target.value)} placeholder="- Faulty sensor&#10;- Damaged wiring harness" />
       </Field>
-      <Field label="Fixes (one per line)" full>
-        <textarea className={taCls} value={actions} onChange={(e) => setActions(e.target.value)} />
+      <Field label="Recommended Fixes (one per line)" full>
+        <textarea disabled={isLoading} className={taCls} value={actions} onChange={(e) => setActions(e.target.value)} placeholder="- Check sensor resistance&#10;- Replace if out of spec" />
       </Field>
-      <div className="sm:col-span-2 flex justify-end">
+      <div className="sm:col-span-2 flex justify-end pt-2 border-t border-border mt-2">
         <button
           type="submit"
-          className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-primary-foreground"
+          disabled={isLoading}
+          className="inline-flex items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-50 transition-all hover:-translate-y-0.5 active:translate-y-0"
           style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
         >
-          <Plus className="h-4 w-4" strokeWidth={3} /> Save Code
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={3} />} 
+          {isLoading ? "Saving..." : initialData ? "Update Code" : "Save Code to Database"}
         </button>
       </div>
     </form>

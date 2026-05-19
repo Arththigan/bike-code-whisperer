@@ -1,6 +1,6 @@
 {
-  "name": "OBD-Decoder",
-  "short_name": "OBD-Decoder",
+  "name": "MRP PARTS",
+  "short_name": "MRP PARTS",
   "description": "Bike DTC / Blink Code lookup tool for mechanics",
   "start_url": "/",
   "display": "standalone",

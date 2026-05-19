@@ -1,6 +1,6 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
-import { Activity, AlertTriangle, CheckCircle2, FileQuestion, MapPin, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { translations } from "@/lib/translations";
 
@@ -69,6 +69,27 @@ export function ResultCard({ result, brandName }: { result: OBDCode; brandName: 
           <BulletList items={result.actions} />
         </Quadrant>
       </div>
+
+      {/* Dynamic AI Detailed Summary Card */}
+      {result.explanation && (
+        <div className="border-t border-border bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5 p-6 animate-fade-in">
+          <div className="flex items-center gap-2 mb-3">
+             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+             </div>
+             <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
+                {language === "tamil" 
+                  ? "AI பகுப்பாய்வு & வழிகாட்டி" 
+                  : language === "tanglish" 
+                  ? "AI Summary & Diagnostics" 
+                  : "Gemini AI Diagnostics & Guide"}
+             </h4>
+          </div>
+          <p className="text-sm leading-relaxed text-foreground/95 font-medium whitespace-pre-line">
+             {result.explanation}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

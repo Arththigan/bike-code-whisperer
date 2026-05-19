@@ -4,7 +4,8 @@ import { BrandSelector } from "@/components/BrandSelector";
 import { SearchBar } from "@/components/SearchBar";
 import { NoResultCard, ResultCard } from "@/components/ResultCard";
 import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/components/RecentHistory";
-import { BRANDS, lookupCode, saveToCache, type OBDCode } from "@/data/obdCodes";
+import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
+import { lookupFirebaseCode } from "@/lib/firebaseDb";
 import { analyzeCodeWithAI } from "@/lib/gemini";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
@@ -47,14 +48,29 @@ function Index() {
     setIsAnalyzing(true);
     setAnalysis(null);
     
-    const dbResult = lookupCode(bId, q);
-    const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
-    const aiResult = await analyzeCodeWithAI(bName, q, dbResult, language);
+    // 1. Check Firebase first (custom/imported codes have priority)
+    let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q);
     
-    let result = aiResult || dbResult;
-    
-    if (aiResult && !dbResult) {
-      saveToCache({ ...aiResult, brandId: bId });
+    // 2. Fallback to built-in local static codes
+    if (!dbResult) {
+      dbResult = lookupCode(bId, q);
+    }
+
+    let result = dbResult;
+
+    // 3. Fallback to AI generation if still not found, or if we need translation/explanation
+    // Call AI if:
+    // - No database result was found
+    // - OR the database result doesn't have our detailed AI 'explanation' field
+    // - OR the user language is Tamil/Tanglish (requiring translation of existing English records)
+    const needsAI = !dbResult || !dbResult.explanation || language === "tamil" || language === "tanglish";
+
+    if (needsAI) {
+      const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
+      const aiResult = await analyzeCodeWithAI(bName, q, dbResult, language);
+      if (aiResult) {
+        result = aiResult;
+      }
     }
 
     setAnalysis({ query: q, brandId: bId, result });
@@ -139,7 +155,7 @@ function Index() {
         </section>
 
         <footer className="mt-12 text-center text-[11px] text-muted-foreground">
-          OBD-Decoder · Built for workshop mechanics · Data is reference only
+          MRP PARTS · Built for workshop mechanics · Data is reference only
         </footer>
       </main>
     </>

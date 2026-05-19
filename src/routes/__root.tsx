@@ -84,14 +84,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { name: "theme-color", content: "#f3a93b" },
-      { title: "OBD-Decoder · Bike DTC Code Lookup for Mechanics" },
+      { title: "MRP PARTS · Bike DTC Code Lookup for Mechanics" },
       { name: "description", content: "Fast DTC and blink code decoder for bike mechanics. Search Yamaha, KTM, Honda, TVS, Suzuki and Royal Enfield codes with symptoms and fix steps." },
-      { name: "author", content: "OBD-Decoder" },
-      { property: "og:title", content: "OBD-Decoder · Bike DTC Code Lookup for Mechanics" },
+      { name: "author", content: "MRP PARTS" },
+      { property: "og:title", content: "MRP PARTS · Bike DTC Code Lookup for Mechanics" },
       { property: "og:description", content: "Fast DTC and blink code decoder for bike mechanics. Search Yamaha, KTM, Honda, TVS, Suzuki and Royal Enfield codes with symptoms and fix steps." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "OBD-Decoder · Bike DTC Code Lookup for Mechanics" },
+      { name: "twitter:title", content: "MRP PARTS · Bike DTC Code Lookup for Mechanics" },
       { name: "twitter:description", content: "Fast DTC and blink code decoder for bike mechanics. Search Yamaha, KTM, Honda, TVS, Suzuki and Royal Enfield codes with symptoms and fix steps." },
       { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fd1cda09-d9ec-4bad-8b92-7535d71e20a4/id-preview-44cca171--21c0184f-f891-473b-b9cd-fbdd896df95d.lovable.app-1778482704799.png" },
       { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/fd1cda09-d9ec-4bad-8b92-7535d71e20a4/id-preview-44cca171--21c0184f-f891-473b-b9cd-fbdd896df95d.lovable.app-1778482704799.png" },
@@ -140,9 +140,7 @@ function RootComponent() {
   // Auth Protection & Real-time blocking check
   useEffect(() => {
     if (!isLoading) {
-      const isAdminPage = location.pathname.startsWith("/admin-login") || location.pathname.startsWith("/super-admin-portal");
       const isUserPage = location.pathname === "/login";
-      const isPublicPage = isAdminPage || isUserPage;
       
       // Re-check isActive status from source of truth (localStorage)
       const rawUsers = localStorage.getItem("obd-decoder-users");
@@ -153,28 +151,22 @@ function RootComponent() {
         
       const isBlocked = user && currentUserStatus && !currentUserStatus.isActive;
 
-      if (isBlocked && !isPublicPage) {
+      if (isBlocked && !isUserPage) {
         logout();
         navigate({ to: "/login" });
         return;
       }
 
-      if (!user && !isPublicPage) {
+      if (!user && !isUserPage) {
         navigate({ to: "/login" });
-      }
-
-      // Redirect admin attempt to correct login if not authenticated
-      if (location.pathname === "/super-admin-portal" && (!user || user.role !== "admin")) {
-        navigate({ to: "/admin-login" });
       }
     }
   }, [user, isLoading, location.pathname]);
 
   if (isLoading) return null;
 
-  const isAdminPortal = location.pathname.startsWith("/super-admin-portal") || location.pathname.startsWith("/admin-login");
   const isUserLogin = location.pathname === "/login";
-  const hideNav = isAdminPortal || isUserLogin;
+  const hideNav = isUserLogin;
 
   return (
     <QueryClientProvider client={queryClient}>

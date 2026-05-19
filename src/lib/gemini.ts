@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { type OBDCode, type Severity } from "@/data/obdCodes";
+import { cacheAICode } from "./firebaseDb";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
@@ -35,15 +36,19 @@ export async function analyzeCodeWithAI(brand: string, code: string, localContex
     - "symptoms": An array of strings describing symptoms.
     - "actions": An array of strings describing steps to fix it.
     - "location": A short description of where the part is usually located on a ${brand} bike.
+    - "explanation": A detailed, easy-to-understand, step-by-step breakdown explaining what this fault means, what causes it, and how a mechanic should safely approach diagnosing and fixing it.
 
     IMPORTANT: Most modern motorcycles use standard OBD2 P-codes (e.g., P0444, P0300). Use the provided localContext first. If not found, use your expert knowledge.
     
+    TRANSLATION RULE:
+    Translate ALL text fields ("title", "affectedPart", "problem", "symptoms", "actions", "location", "explanation") into the target RESPONSE LANGUAGE.
+    
     RESPONSE LANGUAGE: ${language.toUpperCase()}
-    ${language === "tanglish" ? "Tanglish means writing Tamil words using English letters (e.g., 'Enjinil prachinai ullathu')." : ""}
-    ${language === "tamil" ? "Respond ONLY in pure Tamil script. Do not mix English words unless they are technical part names." : ""}
+    ${language === "tanglish" ? "Tanglish means writing Tamil words using English letters (e.g., 'Enjinil prachinai P0123 erpatullaathu. Idhu Throttle Position Sensor-ai baadhikkum...')." : ""}
+    ${language === "tamil" ? "Respond ONLY in pure Tamil script (தமிழ்). Do not mix English words unless they are technical part names (e.g., 'திறன் குறைபாடு', 'வயரிங் செக் செய்யவும்')." : ""}
     ${language === "english" ? "Respond ONLY in standard technical English. Do not mix Tamil or Tanglish words." : ""}
     
-    Return ONLY the JSON.
+    Return ONLY the JSON. Do not include markdown wraps or trailing text.
   `;
 
   try {
@@ -62,7 +67,7 @@ export async function analyzeCodeWithAI(brand: string, code: string, localContex
       const data = JSON.parse(jsonMatch[0]);
       console.log("Parsed Gemini Data:", data);
       
-      return {
+      const obdCode: OBDCode = {
         code: data.code || code,
         title: data.title || "Diagnostic Result",
         affectedPart: data.affectedPart || "See problem description",
@@ -71,7 +76,14 @@ export async function analyzeCodeWithAI(brand: string, code: string, localContex
         symptoms: data.symptoms || ["Check engine light (MIL) is ON"],
         actions: data.actions || ["Consult service manual"],
         location: data.location || "Refer to service manual",
+        explanation: data.explanation || undefined,
       };
+
+      // Cache the AI result in Firebase for future lookups
+      const brandId = brand.toLowerCase().replace(/\s+/g, "");
+      cacheAICode({ ...obdCode, brandId }).catch(() => {});
+
+      return obdCode;
     } catch (parseError) {
       console.error("Error parsing Gemini JSON:", parseError);
       return null;
