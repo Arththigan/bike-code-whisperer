@@ -1,14 +1,13 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
-import { Bike, Key, User, AlertCircle, Loader2, Mail } from "lucide-react";
+import { Bike, Key, AlertCircle, Loader2, Mail } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
 function LoginPage() {
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,11 +21,11 @@ function LoginPage() {
     setIsLoggingIn(true);
 
     try {
-      const success = await login(username, password);
+      const success = await login(email, password);
       if (success) {
         navigate({ to: "/" });
       } else {
-        setError("Invalid username or password.");
+        setError("Invalid email or password.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred.");
@@ -52,21 +51,6 @@ function LoginPage() {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6 rounded-3xl border border-border bg-card/60 p-8 backdrop-blur-xl shadow-2xl">
           <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Username</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="h-12 w-full rounded-xl border border-border bg-background/50 pl-11 pr-4 text-sm focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/10"
-                  placeholder="Enter your username"
-                />
-              </div>
-            </div>
-
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground px-1">Email Address</label>
               <div className="relative">

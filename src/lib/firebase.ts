@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAnalytics, type Analytics } from "firebase/analytics";
+import { getAuth } from "firebase/auth";
 
 const getEnv = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined" && import.meta.env) {
@@ -55,5 +56,6 @@ if (typeof window !== "undefined") {
   });
 }
 
-// Export Firestore instance
+// Export Firestore and Auth instances
 export const db = getFirestore(app);
+export const auth = getAuth(app);

@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Language } from "@/lib/translations";
+import { auth, db } from "@/lib/firebase";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 interface User {
   id: string;
@@ -11,7 +18,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
   language: Language;
@@ -19,19 +26,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const USERS_STORAGE_KEY = "obd-decoder-users";
-
-// Default admin for first time
-const INITIAL_USERS: User[] = [
-  { id: "admin-1", username: "admin", name: "User", role: "admin", isActive: true },
-  { id: "user-1", username: "workshop", name: "Bike Workshop", role: "user", isActive: true }
-];
-
-const HARDCODED_PASSWORDS: Record<string, string> = {
-  "admin": "admin123",
-  "workshop": "bike123"
-};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -46,68 +40,98 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [language]);
 
   useEffect(() => {
-    // Initialize users if not exists
-    if (!localStorage.getItem(USERS_STORAGE_KEY)) {
-      localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(INITIAL_USERS));
-      localStorage.setItem("user-pass-admin", "admin123"); // Hardcoded for demo/setup
-    }
+    // Listen to Firebase Auth state changes
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setIsLoading(true);
+      if (firebaseUser) {
+        try {
+          const email = firebaseUser.email || "";
+          let name = email.split("@")[0];
+          // Default role matches: arunkumaran484@gmail.com is admin, anyone starting with admin is admin, otherwise user
+          let role: "admin" | "user" = 
+            (email.toLowerCase() === "arunkumaran484@gmail.com" || email.toLowerCase().startsWith("admin")) 
+              ? "admin" 
+              : "user";
+          let isActive = true;
 
-    const savedUser = localStorage.getItem("obd-decoder-current-user");
-    if (savedUser) {
-      let parsedUser = JSON.parse(savedUser);
-      
-      // Migration: Rename Admin accounts for User Portal
-      if (parsedUser.username === "admin" && (parsedUser.name === "Super Admin" || parsedUser.name === "Administrator" || parsedUser.name === "Developer" || parsedUser.name === "Workshop Admin")) {
-        parsedUser.name = "User";
-        localStorage.setItem("obd-decoder-current-user", JSON.stringify(parsedUser));
-      }
+          // Attempt to load custom user profile from Firestore
+          const userDocRef = doc(db, "users", firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            if (data.name) name = data.name;
+            if (data.role === "admin" || data.role === "user") role = data.role;
+            if (data.isActive !== undefined) isActive = data.isActive;
+          }
 
-      // Re-verify if user is still active from the central users list
-      const rawUsers = localStorage.getItem(USERS_STORAGE_KEY);
-      const allUsers: User[] = rawUsers ? JSON.parse(rawUsers) : [];
-      
-      // Migration for users list
-      if (Array.isArray(allUsers)) {
-        const adminIndex = allUsers.findIndex(u => u.username === "admin" && (u.name === "Super Admin" || u.name === "Administrator" || u.name === "Developer" || u.name === "Workshop Admin"));
-        if (adminIndex > -1) {
-          allUsers[adminIndex].name = "User";
-          localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(allUsers));
+          if (!isActive) {
+            await signOut(auth);
+            setUser(null);
+          } else {
+            setUser({
+              id: firebaseUser.uid,
+              username: email,
+              name,
+              role,
+              isActive
+            });
+          }
+        } catch (error) {
+          console.error("Error fetching user profile from Firestore:", error);
+          // Fallback to basic email profile if Firestore query fails (e.g. offline/permission rules)
+          const email = firebaseUser.email || "";
+          setUser({
+            id: firebaseUser.uid,
+            username: email,
+            name: email.split("@")[0],
+            role: (email.toLowerCase() === "arunkumaran484@gmail.com" || email.toLowerCase().startsWith("admin")) ? "admin" : "user",
+            isActive: true
+          });
         }
-      }
-
-      const verifiedUser = allUsers.find(u => u.id === parsedUser.id) || INITIAL_USERS.find(u => u.username === parsedUser.username);
-      
-      if (verifiedUser && verifiedUser.isActive) {
-        setUser(verifiedUser);
       } else {
-        logout();
+        setUser(null);
       }
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
-    const allUsers: User[] = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || "[]");
-    const normalizedUsername = username.toLowerCase();
-    const hardcodedPass = HARDCODED_PASSWORDS[normalizedUsername];
-    const foundUser = allUsers.find(u => u.username.toLowerCase() === normalizedUsername) || INITIAL_USERS.find(u => u.username === normalizedUsername);
-    
-    let storedPass = hardcodedPass || localStorage.getItem(`user-pass-${foundUser?.username || username}`);
-
-    if (foundUser && storedPass === password) {
-      if (!foundUser.isActive) {
-        throw new Error("Your account has been disabled. Please contact support.");
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      
+      // Fetch user doc to verify if active
+      const userDocRef = doc(db, "users", userCredential.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if (data.isActive === false) {
+          await signOut(auth);
+          throw new Error("Your account has been disabled. Please contact support.");
+        }
       }
-      setUser(foundUser);
-      localStorage.setItem("obd-decoder-current-user", JSON.stringify(foundUser));
+      
       return true;
+    } catch (error: any) {
+      // Map Firebase auth errors to user-friendly messages
+      let message = error.message;
+      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found" || error.code === "auth/wrong-password") {
+        message = "Invalid email or password.";
+      } else if (error.code === "auth/invalid-email") {
+        message = "Please enter a valid email address.";
+      }
+      throw new Error(message);
     }
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("obd-decoder-current-user");
+  const logout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
   };
 
   return (

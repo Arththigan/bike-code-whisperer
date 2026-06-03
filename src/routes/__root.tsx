@@ -137,26 +137,11 @@ function RootComponent() {
     HAS_SHOWN_SPLASH = true;
   };
 
-  // Auth Protection & Real-time blocking check
+  // Auth Protection
   useEffect(() => {
     if (!isLoading) {
       const isUserPage = location.pathname === "/login";
       
-      // Re-check isActive status from source of truth (localStorage)
-      const rawUsers = localStorage.getItem("obd-decoder-users");
-      const allUsers = rawUsers ? JSON.parse(rawUsers) : [];
-      const currentUserStatus = Array.isArray(allUsers) 
-        ? allUsers.find((u: any) => u.username === user?.username)
-        : null;
-        
-      const isBlocked = user && currentUserStatus && !currentUserStatus.isActive;
-
-      if (isBlocked && !isUserPage) {
-        logout();
-        navigate({ to: "/login" });
-        return;
-      }
-
       if (!user && !isUserPage) {
         navigate({ to: "/login" });
       }

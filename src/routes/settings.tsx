@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "@/components/ThemeProvider";
 import { 
   User, 
@@ -33,10 +33,20 @@ function SettingsPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   
   const [profile, setProfile] = useState({
-    name: user?.name || "John Doe",
-    role: user?.role === "admin" ? "System Admin" : "Workshop Member",
-    email: user?.username || "john@bikeshop.com"
+    name: "John Doe",
+    role: "Workshop Member",
+    email: "john@bikeshop.com"
   });
+
+  useEffect(() => {
+    if (user) {
+      setProfile({
+        name: user.name || "User",
+        role: user.role === "admin" ? "System Admin" : "Workshop Member",
+        email: user.username || ""
+      });
+    }
+  }, [user]);
 
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
