@@ -22,10 +22,10 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
       <div className="relative mb-6">
         <div className="absolute inset-0 rounded-full animate-pulse-glow" />
         <div
-          className="relative flex h-24 w-24 items-center justify-center rounded-full"
-          style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
+          className="relative flex h-28 w-28 items-center justify-center rounded-full overflow-hidden border-2 border-primary/30"
+          style={{ boxShadow: "var(--shadow-glow)" }}
         >
-          <Bike className="h-12 w-12 text-primary-foreground" strokeWidth={2.2} />
+          <img src="/logo.png" alt="AK Arun Wiring Logo" className="h-full w-full object-cover" />
         </div>
       </div>
       <h1 className="text-3xl font-extrabold tracking-tight">

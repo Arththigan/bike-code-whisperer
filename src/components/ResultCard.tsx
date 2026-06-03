@@ -1,8 +1,9 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
-import { Activity, AlertTriangle, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles } from "lucide-react";
+import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { translations } from "@/lib/translations";
+import { useEffect, useState } from "react";
 
 const sevPill: Record<Severity, string> = {
   critical: "bg-critical/15 text-critical border border-critical/30",
@@ -10,7 +11,7 @@ const sevPill: Record<Severity, string> = {
   info: "bg-info/15 text-info border border-info/30",
 };
 
-export function ResultCard({ result, brandName }: { result: OBDCode; brandName: string }) {
+export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { result: OBDCode; brandName: string; onEnhance?: () => void; isEnhancing?: boolean }) {
   const { language } = useAuth();
   const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
 
@@ -70,10 +71,27 @@ export function ResultCard({ result, brandName }: { result: OBDCode; brandName: 
         </Quadrant>
       </div>
 
+      {/* Action Bar for AI Enhancement */}
+      {onEnhance && !isEnhancing && !result.explanation && (
+        <div className="border-t border-border bg-card p-4 flex justify-end">
+          <button
+            onClick={onEnhance}
+            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
+          >
+            <Sparkles className="h-4 w-4" />
+            {language === "tamil" ? "AI மூலம் மேலும் விவரங்கள் பெறவும்" : "Enhance Details with AI"}
+          </button>
+        </div>
+      )}
+
+      {/* AI Loading Animation */}
+      {isEnhancing && <AILoadingCard language={language} />}
+
       {/* Dynamic AI Detailed Summary Card */}
-      {result.explanation && (
+      {!isEnhancing && result.explanation && (
         <div className="border-t border-border bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5 p-6 animate-fade-in">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-4">
              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Sparkles className="h-4 w-4 text-primary animate-pulse" />
              </div>
@@ -85,9 +103,7 @@ export function ResultCard({ result, brandName }: { result: OBDCode; brandName: 
                   : "Gemini AI Diagnostics & Guide"}
              </h4>
           </div>
-          <p className="text-sm leading-relaxed text-foreground/95 font-medium whitespace-pre-line">
-             {result.explanation}
-          </p>
+          <FormattedText text={result.explanation} />
         </div>
       )}
     </div>
@@ -120,6 +136,99 @@ function Quadrant({
   );
 }
 
+const AI_STEPS = [
+  { en: "Connecting to Gemini AI...", ta: "Gemini AI உடன் இணைக்கிறது...", tl: "Gemini AI-ku connect aguthu..." },
+  { en: "Reading diagnostic fault code...", ta: "தொழில்நுட்பக் குறியீடு படிக்கிறது...", tl: "Fault code padikuthu..." },
+  { en: "Analyzing fault patterns...", ta: "தவறான முறைகளை ஆய்வு செய்கிறது...", tl: "Fault patterns analyze aguthu..." },
+  { en: "Cross-referencing service data...", ta: "சேவை தரவுகளை ஒப்பிடுகிறது...", tl: "Service data cross-check pannuthu..." },
+  { en: "Generating expert repair guide...", ta: "நிபுணர் வழிகாட்டி உருவாக்குகிறது...", tl: "Expert guide ready pannuthu..." },
+];
+
+function AILoadingCard({ language }: { language: string }) {
+  const [stepIdx, setStepIdx] = useState(0);
+  const [dots, setDots] = useState(".");
+
+  useEffect(() => {
+    const stepInterval = setInterval(() => {
+      setStepIdx((prev) => (prev + 1) % AI_STEPS.length);
+    }, 1400);
+    const dotInterval = setInterval(() => {
+      setDots((prev) => (prev.length >= 3 ? "." : prev + "."));
+    }, 400);
+    return () => { clearInterval(stepInterval); clearInterval(dotInterval); };
+  }, []);
+
+  const step = AI_STEPS[stepIdx];
+  const label = language === "tamil" ? step.ta : language === "tanglish" ? step.tl : step.en;
+
+  return (
+    <div className="border-t border-border p-6 bg-gradient-to-br from-primary/8 via-background to-secondary/8 animate-fade-in">
+      {/* Header row */}
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex h-10 w-10 items-center justify-center">
+          <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping" />
+          <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-primary/15">
+            <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-widest text-primary">
+            Gemini AI · Deep Analysis
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            {label}{dots}
+          </p>
+        </div>
+        <div className="ml-auto">
+          <Loader2 className="h-5 w-5 text-primary animate-spin" />
+        </div>
+      </div>
+
+      {/* Step indicators */}
+      <div className="flex gap-1.5 mb-5">
+        {AI_STEPS.map((s, i) => (
+          <div
+            key={i}
+            className="h-1 flex-1 rounded-full transition-all duration-700"
+            style={{
+              background: i <= stepIdx
+                ? "var(--gradient-primary)"
+                : "hsl(var(--border))",
+              opacity: i < stepIdx ? 0.5 : 1,
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Skeleton lines */}
+      <div className="space-y-2.5">
+        {["w-4/5", "w-full", "w-3/4", "w-full", "w-2/3"].map((w, i) => (
+          <div
+            key={i}
+            className={`h-3 ${w} rounded-full bg-gradient-to-r from-muted/60 via-muted/30 to-muted/60 animate-pulse`}
+            style={{ animationDelay: `${i * 0.12}s` }}
+          />
+        ))}
+        <div className="mt-4 flex gap-2">
+          {["w-1/3", "w-1/4", "w-2/5"].map((w, i) => (
+            <div
+              key={i}
+              className={`h-6 ${w} rounded-lg bg-primary/10 animate-pulse`}
+              style={{ animationDelay: `${i * 0.2}s` }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* AI badge */}
+      <div className="mt-5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+        <Cpu className="h-3 w-3" />
+        Powered by Google Gemini 2.5 Flash · Deep Diagnostic Mode
+      </div>
+    </div>
+  );
+}
+
 function BulletList({ items }: { items: string[] }) {
   return (
     <ul className="space-y-1.5">
@@ -130,6 +239,48 @@ function BulletList({ items }: { items: string[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function parseBold(text: string) {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (i % 2 === 1) {
+          return <strong key={i} className="font-extrabold text-foreground">{part}</strong>;
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </>
+  );
+}
+
+function FormattedText({ text }: { text: string }) {
+  const lines = text.split('\n');
+  return (
+    <div className="space-y-2.5 text-sm leading-relaxed text-foreground/90 font-medium">
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+        if (!trimmed) return null;
+
+        if (trimmed.startsWith('#')) {
+          const content = trimmed.replace(/^#+\s*/, '');
+          return <h5 key={i} className="font-bold text-base text-primary mt-5 mb-2">{parseBold(content)}</h5>;
+        }
+        
+        if (trimmed.match(/^\*\*(.*?)\*\*:?$/)) {
+           return <h5 key={i} className="font-bold text-base text-primary mt-5 mb-2">{trimmed.replace(/\*\*/g, '')}</h5>;
+        }
+
+        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+          const content = trimmed.substring(2);
+          return <li key={i} className="ml-5 list-disc marker:text-primary/70">{parseBold(content)}</li>;
+        }
+
+        return <p key={i}>{parseBold(line)}</p>;
+      })}
+    </div>
   );
 }
 

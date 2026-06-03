@@ -39,9 +39,11 @@ function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-md space-y-8 animate-fade-up">
         <div className="text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-2xl shadow-primary/20">
-            <Bike className="h-10 w-10 text-primary-foreground" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="AK Arun Wiring Logo"
+            className="mx-auto h-20 w-20 rounded-full object-cover shadow-2xl border-2 border-primary/20"
+          />
           <h1 className="mt-6 text-3xl font-extrabold tracking-tight">Welcome Back</h1>
           <p className="mt-2 text-sm text-muted-foreground uppercase tracking-widest">
             Workshop Access Portal

@@ -2,12 +2,22 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { type OBDCode, type Severity } from "@/data/obdCodes";
 import { cacheAICode } from "./firebaseDb";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const getEnv = (key: string): string | undefined => {
+  if (typeof import.meta !== "undefined" && import.meta.env) {
+    return import.meta.env[key];
+  }
+  if (typeof process !== "undefined" && process.env) {
+    return process.env[key];
+  }
+  return undefined;
+};
+
+const API_KEY = getEnv("VITE_GEMINI_API_KEY") || "";
 const genAI = new GoogleGenerativeAI(API_KEY);
 
-export async function analyzeCodeWithAI(brand: string, code: string, localContext?: any, language: string = "english"): Promise<OBDCode | null> {
+export async function analyzeCodeWithAI(brand: string, brandId: string, code: string, localContext?: any, language: string = "english"): Promise<OBDCode | null> {
   const maskedKey = API_KEY ? `${API_KEY.slice(0, 4)}...${API_KEY.slice(-4)}` : "MISSING";
-  console.log(`Analyzing ${code} for ${brand} using Gemini AI (Key: ${maskedKey})...`);
+  console.log(`Analyzing ${code} for ${brand} (${brandId}) using Gemini AI (Key: ${maskedKey})...`);
   
   if (!API_KEY) {
     console.error("VITE_GEMINI_API_KEY is not defined in .env");
@@ -79,8 +89,7 @@ export async function analyzeCodeWithAI(brand: string, code: string, localContex
         explanation: data.explanation || undefined,
       };
 
-      // Cache the AI result in Firebase for future lookups
-      const brandId = brand.toLowerCase().replace(/\s+/g, "");
+      // Cache the AI result in Firebase for future lookups using the correct passed brandId
       cacheAICode({ ...obdCode, brandId }).catch(() => {});
 
       return obdCode;

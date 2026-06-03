@@ -10,14 +10,30 @@ import {
   serverTimestamp,
   onSnapshot,
 } from "firebase/firestore";
-import { db } from "./firebase";
-import type { OBDCode } from "@/data/obdCodes";
+import { db } from "./firebase.ts";
+import { getAllBuiltInCodes, BRANDS, type OBDCode } from "@/data/obdCodes";
+
+/** Check if a code is duplicate based on existing codes */
+export function isDuplicateCode(existing: FirebaseCode[], newCode: FirebaseCode): boolean {
+  const newCodeUpper = newCode.code.toUpperCase().trim();
+  for (const code of existing) {
+    const existingCodeUpper = (code.code || "").toUpperCase().trim();
+    if (existingCodeUpper !== newCodeUpper) continue;
+    // Same code, check brand rules
+    if (code.brandId === newCode.brandId) return true;
+    if (code.brandId === "generic" || newCode.brandId === "generic") return true;
+    // Also handle global_obd2 alias as generic
+    if (code.brandId === "global_obd2" || newCode.brandId === "global_obd2") return true;
+  }
+  return false;
+}
 
 export interface FirebaseCode extends OBDCode {
   brandId: string;
   id?: string; // Firestore document ID
   createdAt?: any;
   isAIGenerated?: boolean;
+  isCustom?: boolean;
 }
 
 const COL = "dtc_codes";
@@ -60,7 +76,8 @@ export async function lookupFirebaseCode(
     const q = query(
       collection(db, COL),
       where("code", "==", code.toUpperCase()),
-      where("brandId", "in", [brandId, "generic", "global_obd2"])
+      // Strict brand match; do not fall back to generic codes when a specific brand is selected
+      where("brandId", "==", brandId)
     );
     const snap = await getDocs(q);
     if (snap.empty) return null;
@@ -74,25 +91,35 @@ export async function lookupFirebaseCode(
 
 /** Add a new code to Firestore with deterministic ID and smart merge conflict resolution */
 export async function addFirebaseCode(code: FirebaseCode): Promise<string> {
+  // Fetch all existing codes (Firebase + built‑in) for duplicate detection
+  const [firebaseCodes, builtInCodes] = await Promise.all([
+    fetchAllFirebaseCodes(),
+    Promise.resolve(getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false, isEditable: false } as FirebaseCode)))
+  ]);
+  const existing = [...firebaseCodes, ...builtInCodes];
+
+  if (isDuplicateCode(existing, code)) {
+    const brandName = BRANDS.find((b) => b.id === code.brandId)?.name ?? code.brandId;
+    throw new Error(`Duplicate code: ${code.code.toUpperCase()} already exists for ${brandName}`);
+  }
+
   const docId = `${code.brandId}_${code.code.toUpperCase()}`;
   const docRef = doc(db, COL, docId);
   
-  // Try to see if this code already exists to prevent duplicate/overwrite conflicts
+  // Preserve any existing document data (merge)
   let existingData = {};
   try {
     const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      existingData = snap.data();
-    }
+    if (snap.exists()) existingData = snap.data();
   } catch (err) {
     console.warn("Could not check existing document (offline?), proceeding with safe merge", err);
   }
 
   const payload = {
-    ...existingData, // Preserve any extra metadata
+    ...existingData,
     ...code,
     code: code.code.toUpperCase(),
-    isAIGenerated: false, // Manual save takes priority and marks it as official/human-verified
+    isAIGenerated: false,
     createdAt: serverTimestamp(),
   };
   delete payload.id;
@@ -107,26 +134,39 @@ export async function bulkImportCodes(
   onProgress?: (current: number, total: number) => void,
   cancelRef?: { current: boolean }
 ): Promise<number> {
+  // Fetch existing codes once for duplicate detection (Firebase + built‑in)
+  const [firebaseCodes, builtInCodes] = await Promise.all([
+    fetchAllFirebaseCodes(),
+    Promise.resolve(getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false, isEditable: false } as FirebaseCode)))
+  ]);
+  const existing = [...firebaseCodes, ...builtInCodes];
+
+  // Track codes processed in this batch to avoid intra‑batch duplicates
+  const processedKeys = new Set<string>();
+
   let count = 0;
   const total = codes.length;
   for (const code of codes) {
-    // Check if cancellation was requested
     if (cancelRef?.current) {
       console.warn("Bulk import cancelled by user");
       break;
     }
+    const key = `${code.brandId}_${code.code.toUpperCase()}`;
+    // Skip if duplicate already exists in DB or within the current batch
+    if (processedKeys.has(key) || isDuplicateCode(existing, code)) {
+      console.warn(`Skipping duplicate code ${code.code} for brand ${code.brandId}`);
+      continue;
+    }
+    processedKeys.add(key);
     try {
-      const docId = `${code.brandId}_${code.code.toUpperCase()}`;
-      await setDoc(doc(db, COL, docId), {
+      await setDoc(doc(db, COL, key), {
         ...code,
         code: code.code.toUpperCase(),
         isAIGenerated: code.isAIGenerated ?? false,
         createdAt: serverTimestamp(),
-      }, { merge: true }); // Use merge: true to avoid breaking manually customized properties
+      }, { merge: true });
       count++;
-      if (onProgress) {
-        onProgress(count, total);
-      }
+      if (onProgress) onProgress(count, total);
     } catch (e) {
       console.error("Error importing code:", code.code, e);
     }
@@ -137,6 +177,61 @@ export async function bulkImportCodes(
 /** Delete a code from Firestore by document ID */
 export async function deleteFirebaseCode(id: string): Promise<void> {
   await deleteDoc(doc(db, COL, id));
+}
+
+/** Remove duplicate codes from Firestore */
+export async function removeDuplicateCodes(): Promise<number> {
+  try {
+    // Fetch all DTC code documents
+    const snapshot = await getDocs(collection(db, COL));
+    const docs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as any));
+    // Group by normalized code (case‑insensitive)
+    const groups: Record<string, any[]> = {};
+    for (const docItem of docs) {
+      const codeKey = (docItem.code ?? "").toString().toUpperCase();
+      if (!codeKey) continue;
+      if (!groups[codeKey]) groups[codeKey] = [];
+      groups[codeKey].push(docItem);
+    }
+    const toDelete: string[] = [];
+    for (const codeKey in groups) {
+      const entries = groups[codeKey];
+      const generic = entries.find(e => e.brandId === "generic" || e.brandId === "global_obd2");
+      if (generic) {
+        // Delete all non‑generic for this code
+        for (const e of entries) {
+          if (e.id && !(e.brandId === "generic" || e.brandId === "global_obd2")) {
+            toDelete.push(e.id);
+          }
+        }
+        continue;
+      }
+      // No generic: dedupe by brandId+code, keep earliest (by createdAt if present)
+      const brandMap: Record<string, any[]> = {};
+      for (const e of entries) {
+        const brandKey = `${e.brandId || ""}_${codeKey}`;
+        if (!brandMap[brandKey]) brandMap[brandKey] = [];
+        brandMap[brandKey].push(e);
+      }
+      for (const _k in brandMap) {
+        const group = brandMap[_k];
+        if (group.length <= 1) continue;
+        group.sort((a, b) => {
+          const aTime = a.createdAt?.seconds ?? Number.MAX_SAFE_INTEGER;
+          const bTime = b.createdAt?.seconds ?? Number.MAX_SAFE_INTEGER;
+          return aTime - bTime;
+        });
+        const [, ...dups] = group;
+        for (const dup of dups) if (dup.id) toDelete.push(dup.id);
+      }
+    }
+    // Delete
+    for (const id of toDelete) await deleteDoc(doc(db, COL, id));
+    return toDelete.length;
+  } catch (e) {
+    console.error("Error removing duplicate codes", e);
+    return 0;
+  }
 }
 
 /** Save an AI-generated code to Firestore as cache */

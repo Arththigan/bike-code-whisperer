@@ -33,8 +33,10 @@ const sevPill: Record<Severity, string> = {
 function CodesPage() {
   const [firebaseCodes, setFirebaseCodes] = useState<FirebaseCode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [brandFilter, setBrandFilter] = useState<string>("all");
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const [showCustomOnly, setShowCustomOnly] = useState<boolean>(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCode, setEditingCode] = useState<FirebaseCode | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -47,11 +49,13 @@ function CodesPage() {
     // Subscribe to real-time updates (offline-first & instant)
     const unsubscribe = subscribeToFirebaseCodes(
       (codes) => {
+        console.log(`[Codes Page] Successfully synced ${codes.length} codes from Firestore.`);
         setFirebaseCodes(codes);
         setIsLoading(false);
       },
       (error) => {
         console.error("Firestore sync subscription failed:", error);
+        toast.error(`Database Connection Error: ${error.message || error}`);
         setIsLoading(false);
       }
     );
@@ -60,11 +64,17 @@ function CodesPage() {
 
   const handleAddCode = async (c: FirebaseCode) => {
     setIsLoading(true);
-    await addFirebaseCode(c);
-    toast.success(editingCode ? "Code updated successfully!" : "Code added to Firebase!");
-    setShowForm(false);
-    setEditingCode(null);
-    setIsLoading(false);
+    try {
+      await addFirebaseCode(c);
+      toast.success(editingCode ? "Code updated successfully!" : "Code added to Firebase!");
+      setShowForm(false);
+      setEditingCode(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error adding code";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDeleteCode = async (id: string) => {
@@ -105,7 +115,8 @@ function CodesPage() {
 
       // Only display success if cancellation was not triggered
       if (!cancelImportRef.current) {
-        toast.success(`Successfully imported ${count} codes for ${brand || "various brands"}`);
+        const duplicateCount = codes.length - count;
+        toast.success(`Successfully imported ${count} codes${duplicateCount > 0 ? ` (${duplicateCount} duplicates skipped)` : ''} for ${brand || 'various brands'}`);
       }
     } catch (error) {
       if (!cancelImportRef.current) {
@@ -120,20 +131,29 @@ function CodesPage() {
   };
 
   const all = useMemo(() => {
-    const builtIn = getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false }));
-    const custom = firebaseCodes.map((c) => ({ ...c, isCustom: true }));
+    const builtIn = getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false, isEditable: false }));
+    const custom = firebaseCodes.map((c) => ({ ...c, isCustom: c.isCustom !== false, isEditable: true }));
     return [...custom, ...builtIn];
   }, [firebaseCodes]);
 
   const filtered = all.filter((c) => {
     const sevMatch = filter === "all" || SEVERITY_LABEL[c.severity] === filter;
+    // Brand match: allow "all", specific brand, or generic only
+    const brandMatch =
+      brandFilter === "all" ||
+      (brandFilter === "generic"
+        ? c.brandId === "global_obd2" || c.brandId === "generic"
+        : c.brandId === brandFilter);
+    const customMatch = !showCustomOnly || c.isCustom;
     const q = query.trim().toUpperCase();
     const brandName = BRANDS.find((b) => b.id === c.brandId)?.name ?? "Global OBD2";
-    const qMatch = !q || 
-      c.code.toUpperCase().includes(q) || 
-      c.title.toUpperCase().includes(q) || 
+    const exactCodeMatch = q && c.code.toUpperCase() === q;
+    const qMatch = !q ||
+      c.code.toUpperCase().includes(q) ||
+      c.title.toUpperCase().includes(q) ||
       brandName.toUpperCase().includes(q);
-    return sevMatch && qMatch;
+    // Show if severity matches and brand matches (category filter removed)
+    return sevMatch && brandMatch && customMatch && (exactCodeMatch || qMatch);
   });
 
   return (
@@ -170,6 +190,7 @@ function CodesPage() {
               Export
            </button>
         </div>
+      </div>
       {isImporting && importProgress && (
         <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5 animate-in fade-in slide-in-from-top-3 duration-300" style={{ boxShadow: "var(--shadow-glow)" }}>
           <div className="flex items-center justify-between mb-2">
@@ -211,7 +232,6 @@ function CodesPage() {
           </div>
         </div>
       )}
-      </div>
 
       {/* Add new code header */}
       <section className="mb-6 flex items-center justify-between">
@@ -265,36 +285,64 @@ function CodesPage() {
               className="h-9 w-44 rounded-lg border border-border bg-input pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
             />
           </div>
-          <div className="flex gap-1.5">
-            {(["all", "Low", "Medium", "High"] as Filter[]).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-colors ${
-                  filter === f
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
-                }`}
+            <div className="flex gap-1.5 items-center">
+              {/* Brand Dropdown */}
+              <label className="text-xs font-medium text-muted-foreground mr-2">Brand</label>
+              <select
+                value={brandFilter}
+                onChange={e => setBrandFilter(e.target.value)}
+                className="rounded-lg border border-border bg-card px-3 py-1 text-sm focus:border-primary mr-4"
               >
-                {f === "all" ? "All" : f}
-              </button>
-            ))}
-          </div>
+                <option value="all">All</option>
+                <option value="generic">Generic</option>
+                {BRANDS.map(b => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+
+              {/* Severity Filter Buttons */}
+              <div className="flex gap-1.5">
+                {(["all", "Low", "Medium", "High"] as Filter[]).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                      filter === f
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    }`}
+                  >
+                    {f === "all" ? "All" : f}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Code Toggle */}
+              <label className="inline-flex items-center space-x-2 ml-4">
+                <input
+                  type="checkbox"
+                  checked={showCustomOnly}
+                  onChange={e => setShowCustomOnly(e.target.checked)}
+                  className="form-checkbox h-4 w-4 text-primary border-border"
+                />
+                <span className="text-xs font-medium text-muted-foreground">Custom Only</span>
+              </label>
+            </div>
         </div>
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filtered.map((c) => (
           <CodeTile
-            key={`${c.brandId}-${c.code}-${c.isCustom ? "x" : "b"}`}
+            key={`${c.brandId}-${c.code}-${c.isEditable ? "x" : "b"}`}
             code={c}
             onDelete={
-              c.isCustom && c.id
-                ? () => handleDeleteCode(c.id!)
+              (c as any).id
+                ? () => handleDeleteCode((c as any).id)
                 : undefined
             }
             onEdit={
-              c.isCustom
+              c.isEditable
                 ? () => handleEditClick(c)
                 : undefined
             }
@@ -318,7 +366,7 @@ function CodeTile({
   onDelete,
   onEdit,
 }: {
-  code: OBDCode & { brandId: string; isCustom?: boolean; isAIGenerated?: boolean };
+  code: OBDCode & { brandId: string; isCustom?: boolean; isAIGenerated?: boolean; isEditable?: boolean };
   onDelete?: () => void;
   onEdit?: () => void;
 }) {
@@ -333,28 +381,29 @@ function CodeTile({
           {code.code}
         </span>
         <div className="flex flex-col items-end gap-1">
-            <span
+          <span
             className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${sevPill[code.severity]}`}
-            >
+          >
             {SEVERITY_LABEL[code.severity]}
-            </span>
-            {code.isCustom && (
-                <span className="rounded-full px-2 py-0.5 text-[8px] font-bold uppercase bg-secondary text-muted-foreground border border-border">
-                    {code.isAIGenerated ? "AI Cached" : "Custom"}
-                </span>
-            )}
+          </span>
         </div>
       </div>
       <h3 className="mt-2 text-sm font-bold leading-snug text-foreground line-clamp-2">{code.title}</h3>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <span className="inline-flex items-center rounded-md bg-secondary/60 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground border border-border/40">
-          {brand}
-        </span>
-        {code.category && (
-          <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary border border-primary/20">
-            {code.category}
+          {/* Status badge: Custom / Generic / Brand */}
+          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            code.isCustom
+              ? "bg-secondary text-muted-foreground border border-border"
+              : (code.brandId === "global_obd2" || code.brandId === "generic")
+                ? "bg-info/15 text-info border border-info/30"
+                : "bg-primary/15 text-primary border border-primary/30"
+          }`}>
+            {code.isCustom
+              ? "Custom"
+              : (code.brandId === "global_obd2" || code.brandId === "generic")
+                ? "Generic"
+                : (BRANDS.find((b) => b.id === code.brandId)?.name ?? "Unknown")}
           </span>
-        )}
       </div>
       
       {/* Edit and Delete Buttons visible on hover */}
@@ -450,6 +499,7 @@ function AddCodeForm({
       symptoms: split(symptoms),
       causes: split(causes),
       actions: split(actions),
+      isCustom: initialData ? (initialData.isCustom ?? false) : true,
     });
   };
 

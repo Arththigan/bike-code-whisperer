@@ -38,6 +38,13 @@ export const BRANDS: Brand[] = [
   { id: "kawasaki", name: "Kawasaki" },
   { id: "hero", name: "Hero" },
   { id: "piaggio", name: "Piaggio" },
+  { id: "ducati", name: "Ducati" },
+  { id: "triumph", name: "Triumph" },
+  { id: "harleydavidson", name: "Harley-Davidson" },
+  { id: "aprilia", name: "Aprilia" },
+  { id: "indian", name: "Indian Motorcycle" },
+  { id: "husqvarna", name: "Husqvarna" },
+  { id: "ather", name: "Ather Energy" },
   { id: "generic", name: "Other / Generic" },
 ];
 
@@ -66,7 +73,7 @@ export function lookupCode(brandId: string, query: string): OBDCode | null {
   // Try brand-specific first, then generic
   const brandList = CODES[brandId] || [];
   const genericList = CODES["generic"] || [];
-  const combined = [...brandList, ...genericList];
+  const combined = brandId === "generic" ? genericList : brandList;
   return combined.find((c) => c.code.toUpperCase() === q) || null;
 }
 

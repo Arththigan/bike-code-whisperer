@@ -7,6 +7,7 @@ import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/componen
 import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
 import { lookupFirebaseCode } from "@/lib/firebaseDb";
 import { analyzeCodeWithAI } from "@/lib/gemini";
+import { toast } from "sonner";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
 
@@ -20,17 +21,37 @@ interface AnalysisState {
   result: OBDCode | null;
 }
 
+const SESSION_KEY = "obd-last-analysis";
+
+function saveSession(state: AnalysisState) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(state)); } catch {}
+}
+
+function loadSession(): AnalysisState | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 function Index() {
   const [brandId, setBrandId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisState | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
   const { language } = useAuth();
 
   useEffect(() => {
     setHistory(loadHistory());
     const last = localStorage.getItem("obd-decoder-last-brand");
     if (last && BRANDS.some((b) => b.id === last)) setBrandId(last);
+    // Restore last analysis result from session
+    const saved = loadSession();
+    if (saved) {
+      setAnalysis(saved);
+      setBrandId(saved.brandId);
+    }
   }, []);
 
   useEffect(() => {
@@ -44,9 +65,13 @@ function Index() {
     [brandId],
   );
 
-  const runAnalysis = async (q: string, bId: string) => {
-    setIsAnalyzing(true);
-    setAnalysis(null);
+  const runAnalysis = async (q: string, bId: string, forceAI: boolean = false) => {
+    if (forceAI) {
+      setIsEnhancing(true);
+    } else {
+      setIsAnalyzing(true);
+      setAnalysis(null);
+    }
     
     // 1. Check Firebase first (custom/imported codes have priority)
     let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q);
@@ -63,17 +88,24 @@ function Index() {
     // - No database result was found
     // - OR the database result doesn't have our detailed AI 'explanation' field
     // - OR the user language is Tamil/Tanglish (requiring translation of existing English records)
-    const needsAI = !dbResult || !dbResult.explanation || language === "tamil" || language === "tanglish";
+    // - OR the user explicitly requested forced AI enhancement
+    const needsAI = forceAI || !dbResult || !dbResult.explanation || language === "tamil" || language === "tanglish";
 
     if (needsAI) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
-      const aiResult = await analyzeCodeWithAI(bName, q, dbResult, language);
-      if (aiResult) {
-        result = aiResult;
+      try {
+        const aiResult = await analyzeCodeWithAI(bName, bId, q, dbResult, language);
+        if (aiResult) {
+          result = aiResult;
+          if (forceAI) toast.success("AI Enhancement Complete!");
+        }
+      } catch (err: any) {
+        if (forceAI) toast.error("AI Error: " + (err.message || "Failed to enhance"));
       }
     }
 
     setAnalysis({ query: q, brandId: bId, result });
+    saveSession({ query: q, brandId: bId, result });
 
     if (result) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? "";
@@ -84,6 +116,7 @@ function Index() {
     }
     
     setIsAnalyzing(false);
+    setIsEnhancing(false);
     
     setTimeout(() => {
       document.getElementById("result-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -147,6 +180,8 @@ function Index() {
               <ResultCard
                 result={analysis.result}
                 brandName={BRANDS.find((b) => b.id === analysis.brandId)?.name ?? ""}
+                onEnhance={() => runAnalysis(analysis.query, analysis.brandId, true)}
+                isEnhancing={isEnhancing}
               />
             ) : (
               <NoResultCard query={analysis.query} brandName={brandName || "this brand"} />
@@ -155,7 +190,7 @@ function Index() {
         </section>
 
         <footer className="mt-12 text-center text-[11px] text-muted-foreground">
-          MRP PARTS · Built for workshop mechanics · Data is reference only
+          AK ARUN WIRING · Built for workshop mechanics · Data is reference only
         </footer>
       </main>
     </>

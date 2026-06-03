@@ -48,12 +48,14 @@ export function Sidebar() {
   return (
     <div className="flex h-full w-64 flex-col border-r border-border bg-card/40 backdrop-blur-xl">
       <div className="flex h-20 items-center gap-3 px-6 border-b border-border/50">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20">
-          <Bike className="h-6 w-6 text-primary-foreground" />
-        </div>
+        <img
+          src="/logo.png"
+          alt="AK Arun Wiring Logo"
+          className="h-10 w-10 rounded-full object-cover shadow-lg shadow-primary/20 border border-primary/20"
+        />
         <div>
-          <h1 className="text-sm font-black tracking-widest uppercase leading-none text-foreground">MRP Parts</h1>
-          <p className="text-[10px] text-primary font-bold tracking-widest mt-1.5 uppercase">OBD-Decorder</p>
+          <h1 className="text-sm font-black tracking-wider uppercase leading-none text-foreground">AK Arun Wiring</h1>
+          <p className="text-[10px] text-primary font-bold tracking-widest mt-1.5 uppercase">OBD-Decoder</p>
         </div>
       </div>
 

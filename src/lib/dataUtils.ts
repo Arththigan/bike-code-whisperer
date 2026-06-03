@@ -48,10 +48,10 @@ export async function parseCSVToCodes(file: File): Promise<{ codes: FirebaseCode
             throw new Error(`Line ${lineNum}: 'code' column is missing or empty.`);
           }
 
-          // Validate DTC Code format (alphanumeric, e.g. P0123, 1502, C0012)
-          const dtcRegex = /^[A-Z0-9-]{3,10}$/i;
+          // Validate DTC Code format (alphanumeric, e.g. 12, P0123, 1502, C0012)
+          const dtcRegex = /^[A-Z0-9-]{2,10}$/i;
           if (!dtcRegex.test(codeObj.code)) {
-            throw new Error(`Line ${lineNum}: Invalid DTC format '${codeObj.code}'. Must be alphanumeric between 3-10 characters.`);
+            throw new Error(`Line ${lineNum}: Invalid DTC format '${codeObj.code}'. Must be alphanumeric between 2-10 characters.`);
           }
 
           if (!codeObj.brand) {
@@ -92,7 +92,8 @@ export async function parseCSVToCodes(file: File): Promise<{ codes: FirebaseCode
             symptoms: codeObj.symptoms || [],
             actions: codeObj.actions || [],
             location: codeObj.location || "N/A",
-            brandId: mappedBrandId
+            brandId: mappedBrandId,
+            isCustom: true
           });
         }
         resolve({ codes: newCodes, brand: importedBrand });
