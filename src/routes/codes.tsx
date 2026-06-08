@@ -1,7 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, Upload, Download, Loader2, Pencil } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, Upload, Download, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
+import { ResultCard } from "@/components/ResultCard";
 import {
   BRANDS,
   SEVERITY_LABEL,
@@ -44,6 +45,7 @@ function CodesPage() {
   const [showCustomOnly, setShowCustomOnly] = useState<boolean>(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCode, setEditingCode] = useState<FirebaseCode | null>(null);
+  const [previewCode, setPreviewCode] = useState<(OBDCode & { brandId: string }) | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -344,6 +346,7 @@ function CodesPage() {
           <CodeTile
             key={`${c.brandId}-${c.code}-${c.isEditable ? "x" : "b"}`}
             code={c}
+            onPreview={() => setPreviewCode(c)}
             onDelete={
               (c as any).id
                 ? () => handleDeleteCode((c as any).id)
@@ -366,17 +369,42 @@ function CodesPage() {
         )}
       </section>
     </main>
+
+    {/* Preview Modal */}
+    {previewCode && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+        onClick={() => setPreviewCode(null)}
+      >
+        <div
+          className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setPreviewCode(null)}
+            className="absolute top-4 right-4 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <ResultCard
+            result={previewCode}
+            brandName={BRANDS.find((b) => b.id === previewCode.brandId)?.name ?? "Global OBD2"}
+          />
+        </div>
+      </div>
+    )}
   );
 }
-
 function CodeTile({
   code,
   onDelete,
   onEdit,
+  onPreview,
 }: {
   code: OBDCode & { brandId: string; isCustom?: boolean; isAIGenerated?: boolean; isEditable?: boolean };
   onDelete?: () => void;
   onEdit?: () => void;
+  onPreview?: () => void;
 }) {
   const { language } = useAuth();
   const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
@@ -385,7 +413,8 @@ function CodeTile({
 
   return (
     <article
-      className="group relative rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
+      onClick={onPreview}
+      className="group relative rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40 cursor-pointer"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       <div className="flex items-start justify-between gap-2">
@@ -424,7 +453,7 @@ function CodeTile({
       <div className="absolute bottom-3 right-3 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         {onEdit && (
           <button
-            onClick={onEdit}
+            onClick={(e) => { e.stopPropagation(); onEdit(); }}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors"
             aria-label="Edit custom code"
           >
@@ -433,7 +462,7 @@ function CodeTile({
         )}
         {onDelete && (
           <button
-            onClick={onDelete}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
             aria-label="Delete custom code"
           >
