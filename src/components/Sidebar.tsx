@@ -144,15 +144,28 @@ export function Sidebar() {
 }
 
 export function MobileNav() {
+    const location = useLocation();
+
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-border bg-card/80 backdrop-blur-lg px-2 sm:hidden">
-            <Link to="/" className="flex flex-col items-center gap-1 text-[10px] font-medium text-muted-foreground">
+        <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
+            <Link to="/" className={cn(
+              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
+              location.pathname === "/" ? "text-primary" : "text-muted-foreground"
+            )}>
                 <LayoutDashboard className="h-5 w-5" />
             </Link>
-            <Link to="/codes" className="flex flex-col items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <Link to="/codes" className={cn(
+              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
+              location.pathname === "/codes" ? "text-primary" : "text-muted-foreground"
+            )}>
                 <Database className="h-5 w-5" />
             </Link>
-            <Link to="/settings" className="flex flex-col items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <Link to="/settings" className={cn(
+              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
+              location.pathname === "/settings" ? "text-primary" : "text-muted-foreground"
+            )}>
                 <Settings className="h-5 w-5" />
             </Link>
         </div>
