@@ -425,9 +425,9 @@ export const translations: Translations = {
     tanglish: "High (Critical)"
   },
   allCodesLabel: {
-    english: "All Codes",
-    tamil: "அனைத்து குறியீடுகள்",
-    tanglish: "All Codes"
+    english: "Total Codes",
+    tamil: "மொத்த குறியீடுகள்",
+    tanglish: "Total Codes"
   },
   noCodesMatch: {
     english: "No codes match your filter.",
