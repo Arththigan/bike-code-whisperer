@@ -157,7 +157,7 @@ function RootComponent() {
   if (isLoading) return null;
 
   const isUserLogin = location.pathname === "/login";
-  const hideNav = isUserLogin;
+  const hideNav = isUserLogin || showSplash;
 
   return (
     <QueryClientProvider client={queryClient}>
