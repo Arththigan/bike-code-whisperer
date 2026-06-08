@@ -143,6 +143,12 @@ function RootComponent() {
     HAS_SHOWN_SPLASH = true;
   };
 
+  // Scroll to top on route change
+  useEffect(() => {
+    const mainEl = document.querySelector("main");
+    if (mainEl) mainEl.scrollTop = 0;
+  }, [location.pathname]);
+
   // Auth Protection
   useEffect(() => {
     if (!isLoading) {
@@ -164,13 +170,18 @@ function RootComponent() {
       <ThemeProvider>
         <Toaster position="top-center" richColors />
         {showSplash && <SplashScreen onDone={handleSplashDone} />}
-        <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
+        <div className="flex bg-background text-foreground transition-colors duration-300"
+          style={{ height: "100dvh" }}
+        >
           {!hideNav && (
             <aside className="hidden sm:block h-screen sticky top-0 shrink-0">
               <Sidebar />
             </aside>
           )}
-          <main className={cn("flex-1 pb-20 sm:pb-0 min-w-0", hideNav && "pb-0")}>
+          <main
+            className={cn("flex-1 min-w-0 overflow-y-auto", hideNav ? "pb-0" : "pb-20 sm:pb-0")}
+            style={{ height: "100dvh" }}
+          >
             <Outlet />
           </main>
           {!hideNav && <MobileNav />}
