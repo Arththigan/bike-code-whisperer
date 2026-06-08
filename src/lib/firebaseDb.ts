@@ -34,6 +34,7 @@ export interface FirebaseCode extends OBDCode {
   createdAt?: any;
   isAIGenerated?: boolean;
   isCustom?: boolean;
+  language?: string;
 }
 
 const COL = "dtc_codes";
@@ -67,10 +68,11 @@ export async function fetchAllFirebaseCodes(): Promise<FirebaseCode[]> {
   }
 }
 
-/** Lookup a specific code+brand from Firestore */
+/** Lookup a specific code+brand from Firestore with language support */
 export async function lookupFirebaseCode(
   brandId: string,
-  code: string
+  code: string,
+  language?: string
 ): Promise<FirebaseCode | null> {
   try {
     const q = query(
@@ -81,8 +83,16 @@ export async function lookupFirebaseCode(
     );
     const snap = await getDocs(q);
     if (snap.empty) return null;
-    const d = snap.docs[0];
-    return { id: d.id, ...d.data() } as FirebaseCode;
+    
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FirebaseCode));
+    
+    if (language) {
+      const match = docs.find((d) => d.language === language);
+      if (match) return match;
+    }
+    
+    // Fallback to English or first document
+    return docs.find((d) => !d.language || d.language === "english") || docs[0];
   } catch (e) {
     console.error("Firebase lookupCode error:", e);
     return null;
@@ -234,10 +244,11 @@ export async function removeDuplicateCodes(): Promise<number> {
   }
 }
 
-/** Save an AI-generated code to Firestore as cache */
-export async function cacheAICode(code: FirebaseCode): Promise<void> {
+/** Save an AI-generated code to Firestore as cache (language-specific) */
+export async function cacheAICode(code: FirebaseCode & { language?: string }): Promise<void> {
   try {
-    const docId = `${code.brandId}_${code.code.toUpperCase()}`;
+    const langSuffix = code.language && code.language !== "english" ? `_${code.language}` : "";
+    const docId = `${code.brandId}_${code.code.toUpperCase()}${langSuffix}`;
     await setDoc(doc(db, COL, docId), {
       ...code,
       code: code.code.toUpperCase(),

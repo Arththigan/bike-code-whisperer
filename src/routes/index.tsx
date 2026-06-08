@@ -74,7 +74,7 @@ function Index() {
     }
     
     // 1. Check Firebase first (custom/imported codes have priority)
-    let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q);
+    let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q, language);
     
     // 2. Fallback to built-in local static codes
     if (!dbResult) {
@@ -87,9 +87,10 @@ function Index() {
     // Call AI if:
     // - No database result was found
     // - OR the database result doesn't have our detailed AI 'explanation' field
-    // - OR the user language is Tamil/Tanglish (requiring translation of existing English records)
+    // - OR the database result language is different from the target language
     // - OR the user explicitly requested forced AI enhancement
-    const needsAI = forceAI || !dbResult || !dbResult.explanation || language === "tamil" || language === "tanglish";
+    const dbLang = (dbResult as any)?.language || "english";
+    const needsAI = forceAI || !dbResult || !dbResult.explanation || dbLang !== language;
 
     if (needsAI) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;

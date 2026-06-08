@@ -193,5 +193,315 @@ export const translations: Translations = {
     english: "Refer to service manual for component location.",
     tamil: "பாகத்தின் அமைவிடத்தை அறிய சேவை கையேட்டைப் பார்க்கவும்.",
     tanglish: "Component location-ku service manual-ai paarunga."
+  },
+  low: {
+    english: "Low",
+    tamil: "குறைந்த",
+    tanglish: "Low"
+  },
+  medium: {
+    english: "Medium",
+    tamil: "நடுத்தர",
+    tanglish: "Medium"
+  },
+  high: {
+    english: "High",
+    tamil: "அதிக",
+    tanglish: "High"
+  },
+  custom: {
+    english: "Custom",
+    tamil: "தனிப்பயன்",
+    tanglish: "Custom"
+  },
+  generic: {
+    english: "Generic",
+    tamil: "பொதுவானது",
+    tanglish: "Generic"
+  },
+  customOnly: {
+    english: "Custom Only",
+    tamil: "தனிப்பயன் மட்டும்",
+    tanglish: "Custom Only"
+  },
+  dictionaryHeader: {
+    english: "Code Dictionary",
+    tamil: "குறியீடு அகராதி",
+    tanglish: "Code Dictionary"
+  },
+  addCustomBtn: {
+    english: "Add Custom Code",
+    tamil: "தனிப்பயன் குறியீட்டைச் சேர்",
+    tanglish: "Add Custom Code"
+  },
+  backBtn: {
+    english: "Back",
+    tamil: "பின்செல்",
+    tanglish: "Back"
+  },
+  cancelBtn: {
+    english: "Cancel",
+    tamil: "ரத்து செய்",
+    tanglish: "Cancel"
+  },
+  searchDtcPlaceholder: {
+    english: "Search code...",
+    tamil: "குறியீட்டைத் தேடுக...",
+    tanglish: "Search code..."
+  },
+  allOption: {
+    english: "All",
+    tamil: "அனைத்தும்",
+    tanglish: "All"
+  },
+  importCsvBtn: {
+    english: "Import CSV",
+    tamil: "CSV இறக்குமதி",
+    tanglish: "Import CSV"
+  },
+  exportBtn: {
+    english: "Export",
+    tamil: "ஏற்றுமதி",
+    tanglish: "Export"
+  },
+  brandLabel: {
+    english: "Brand",
+    tamil: "வகை",
+    tanglish: "Brand"
+  },
+  dtcCodeLabel: {
+    english: "DTC Code *",
+    tamil: "DTC குறியீடு *",
+    tanglish: "DTC Code *"
+  },
+  faultTitleLabel: {
+    english: "Fault Title *",
+    tamil: "பழுது தலைப்பு *",
+    tanglish: "Fault Title *"
+  },
+  motorcycleBrandLabel: {
+    english: "Motorcycle Brand *",
+    tamil: "இருசக்கர வாகன பிராண்ட் *",
+    tanglish: "Motorcycle Brand *"
+  },
+  severityLevelLabel: {
+    english: "Severity Level *",
+    tamil: "தீவிர நிலை *",
+    tanglish: "Severity Level *"
+  },
+  systemCategoryLabel: {
+    english: "Category / System",
+    tamil: "வகை / மின் அமைப்பு",
+    tanglish: "Category / System"
+  },
+  componentLocationLabel: {
+    english: "Component Location",
+    tamil: "பாகத்தின் அமைவிடம்",
+    tanglish: "Component Location"
+  },
+  problemDescriptionLabel: {
+    english: "Problem Description",
+    tamil: "பிரச்சனை விளக்கம்",
+    tanglish: "Problem Description"
+  },
+  symptomsLabel: {
+    english: "Symptoms (one per line)",
+    tamil: "அறிகுறிகள் (வரியொன்றிற்கு ஒன்று)",
+    tanglish: "Symptoms (one per line)"
+  },
+  causesLabel: {
+    english: "Possible Causes (one per line)",
+    tamil: "சாத்தியமான காரணங்கள்",
+    tanglish: "Possible Causes"
+  },
+  fixesLabel: {
+    english: "Recommended Fixes (one per line)",
+    tamil: "பரிந்துரைக்கப்பட்ட தீர்வுகள்",
+    tanglish: "Recommended Fixes"
+  },
+  saveToDbBtn: {
+    english: "Save Code to Database",
+    tamil: "தரவுத்தளத்தில் சேமிக்கவும்",
+    tanglish: "Save Code to Database"
+  },
+  savingLoader: {
+    english: "Saving...",
+    tamil: "சேமிக்கப்படுகிறது...",
+    tanglish: "Saving..."
+  },
+  settingsDescription: {
+    english: "Manage your account settings and application preferences.",
+    tamil: "உங்கள் கணக்கு மற்றும் ஆப் அமைப்புகளை நிர்வகிக்கவும்.",
+    tanglish: "Account settings mattrum App preferences-ai manage pannunga."
+  },
+  customizeAppAppearance: {
+    english: "Customize how the app looks for you.",
+    tamil: "ஆப் எப்படி தெரிய வேண்டும் என்பதை முடிவு செய்யுங்கள்.",
+    tanglish: "App-in appearance-ai customize pannunga."
+  },
+  dataManagement: {
+    english: "Data Management",
+    tamil: "தரவு மேலாண்மை",
+    tanglish: "Data Management"
+  },
+  dataManagementDesc: {
+    english: "Import or export your OBD codes and application data.",
+    tamil: "உங்கள் OBD கோடுகள் மற்றும் டேட்டாவை இறக்குமதி அல்லது ஏற்றுமதி செய்யவும்.",
+    tanglish: "OBD codes mattrum application data-ai import alladhu export pannunga."
+  },
+  importDataDesc: {
+    english: "Upload a CSV file to add multiple codes at once.",
+    tamil: "அனைத்து கோடுகளையும் ஒரே நேரத்தில் சேர்க்க CSV கோப்பை பதிவேற்றவும்.",
+    tanglish: "Orey nerathil codes-ai add seiya CSV file-ai upload pannunga."
+  },
+  chooseFileBtn: {
+    english: "Choose File",
+    tamil: "கோப்பைத் தேர்ந்தெடு",
+    tanglish: "Choose File"
+  },
+  exportDataDesc: {
+    english: "Download all your saved codes as a CSV file for backup.",
+    tamil: "பாதுகாப்பிற்காக உங்கள் அனைத்து கோடுகளையும் CSV கோப்பாக பதிவிறக்கவும்.",
+    tanglish: "Unangaludaiya saved codes-ai backup-kaga CSV file-aga download pannunga."
+  },
+  backToSearch: {
+    english: "Back to Search",
+    tamil: "தேடலுக்குத் திரும்பு",
+    tanglish: "Back to Search"
+  },
+  newDiagnosticCode: {
+    english: "New Diagnostic Code",
+    tamil: "புதிய தொழில்நுட்பக் குறியீடு",
+    tanglish: "New DTC Code"
+  },
+  editDiagnosticCode: {
+    english: "Edit Diagnostic Code",
+    tamil: "தொழில்நுட்பக் குறியீட்டைத் திருத்து",
+    tanglish: "Edit DTC Code"
+  },
+  newDiagnosticCodeDesc: {
+    english: "Add a code to the shared global dictionary.",
+    tamil: "பகிரப்பட்ட பொதுவான அகராதியில் ஒரு குறியீட்டைச் சேர்க்கவும்.",
+    tanglish: "Shared dictionary-il code-ai add pannuga."
+  },
+  editDiagnosticCodeDesc: {
+    english: "Modify code details and save changes.",
+    tamil: "குறியீட்டின் விவரங்களை மாற்றி சேமிக்கவும்.",
+    tanglish: "Code details-ai modify pannunga."
+  },
+  updateCodeBtn: {
+    english: "Update Code",
+    tamil: "குறியீட்டைப் புதுப்பி",
+    tanglish: "Code-ai Update sei"
+  },
+  categoryPlaceholder: {
+    english: "e.g. Engine, Throttle, ABS",
+    tamil: "எ.கா. எஞ்சின், த்ராட்டில், ஏபிஎஸ்",
+    tanglish: "e.g. Engine, Throttle, ABS"
+  },
+  locationPlaceholder: {
+    english: "e.g. Engine front - Left side",
+    tamil: "எ.கா. எஞ்சின் முன் பகுதி - இடது பக்கம்",
+    tanglish: "e.g. Engine front - Left side"
+  },
+  problemDescriptionPlaceholder: {
+    english: "Briefly describe what this fault means...",
+    tamil: "இந்த பழுது எதைக் குறிக்கிறது என்பதை விளக்கவும்...",
+    tanglish: "Indha fault enna endru vilakkuga..."
+  },
+  lowSeverity: {
+    english: "Low (Info)",
+    tamil: "குறைந்த (தகவல்)",
+    tanglish: "Low (Info)"
+  },
+  mediumSeverity: {
+    english: "Medium (Warning)",
+    tamil: "நடுத்தர (எச்சரிக்கை)",
+    tanglish: "Medium (Warning)"
+  },
+  highSeverity: {
+    english: "High (Critical)",
+    tamil: "அதிக (ஆபத்தானது)",
+    tanglish: "High (Critical)"
+  },
+  allCodesLabel: {
+    english: "All Codes",
+    tamil: "அனைத்து குறியீடுகள்",
+    tanglish: "All Codes"
+  },
+  noCodesMatch: {
+    english: "No codes match your filter.",
+    tamil: "வடிகட்டிக்கு பொருந்தும் குறியீடுகள் இல்லை.",
+    tanglish: "Codes eduvum match aagavillai."
+  },
+  diagnosticCode: {
+    english: "Diagnostic Code",
+    tamil: "தொழில்நுட்ப பழுது குறியீடு",
+    tanglish: "Diagnostic Code"
   }
 };
+
+const dTCWordTranslations: Record<string, string> = {
+  "throttle": "த்ராட்டில் (Throttle)",
+  "position": "நிலை (Position)",
+  "sensor": "சென்சார் (Sensor)",
+  "circuit": "மின்சுற்று (Circuit)",
+  "malfunction": "கோளாறு (Malfunction)",
+  "high": "அதிக (High)",
+  "low": "குறைந்த (Low)",
+  "input": "உள்ளீடு",
+  "output": "வெளியீடு",
+  "voltage": "மின்னழுத்தம் (Voltage)",
+  "open": "துண்டிக்கப்பட்ட (Open)",
+  "short": "குறுக்கு சுற்று (Short)",
+  "ground": "எர்த் (Ground)",
+  "control": "கட்டுப்பாடு (Control)",
+  "valve": "வால்வ் (Valve)",
+  "fuel": "எரிபொருள் (Fuel)",
+  "engine": "எஞ்சின் (Engine)",
+  "temperature": "வெப்பநிலை (Temperature)",
+  "injector": "இன்ஜெக்டர் (Injector)",
+  "system": "அமைப்பு (System)",
+  "pressure": "அழுத்தம் (Pressure)",
+  "cylinder": "சிலிண்டர் (Cylinder)",
+  "performance": "செயல்திறன் (Performance)",
+  "range": "வரம்பு (Range)",
+  "o2": "ஆக்ஸிஜன் (O2)",
+  "oxygen": "ஆக்ஸிஜன் (Oxygen)",
+  "heater": "ஹீட்டர் (Heater)",
+  "igniter": "இக்னிட்டர் (Igniter)",
+  "ignition": "இக்னிஷன் (Ignition)",
+  "coil": "காயில் (Coil)",
+  "signal": "சிக்னல் (Signal)",
+  "speed": "வேகம் (Speed)",
+  "vehicle": "வாகனம் (Vehicle)",
+  "exhaust": "எக்ஸாஸ்ட் (Exhaust)",
+  "leak": "கசிவு (Leak)",
+  "detected": "கண்டறியப்பட்டது",
+  "invalid": "தவறான",
+  "communication": "தொடர்பு (Communication)",
+  "lost": "இழக்கப்பட்டது",
+  "harness": "ஹார்னஸ் (Harness)",
+  "connector": "கனெக்டர் (Connector)",
+  "battery": "பேட்டரி (Battery)",
+  "relay": "ரிலே (Relay)"
+};
+
+export function translateDTCTitle(title: string, language: Language): string {
+  if (language !== "tamil" && language !== "tanglish") return title;
+  
+  if (language === "tanglish") {
+    return title;
+  }
+
+  let translated = title;
+  const sortedKeys = Object.keys(dTCWordTranslations).sort((a, b) => b.length - a.length);
+  
+  for (const key of sortedKeys) {
+    const regex = new RegExp(`\\b${key}\\b`, 'gi');
+    translated = translated.replace(regex, dTCWordTranslations[key]);
+  }
+  
+  return translated;
+}
+

@@ -90,7 +90,7 @@ export async function analyzeCodeWithAI(brand: string, brandId: string, code: st
       };
 
       // Cache the AI result in Firebase for future lookups using the correct passed brandId
-      cacheAICode({ ...obdCode, brandId }).catch(() => {});
+      cacheAICode({ ...obdCode, brandId, language }).catch(() => {});
 
       return obdCode;
     } catch (parseError) {

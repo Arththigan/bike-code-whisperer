@@ -2,7 +2,7 @@ import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
 import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu } from "lucide-react";
 import { useAuth } from "./AuthProvider";
-import { translations } from "@/lib/translations";
+import { translations, translateDTCTitle } from "@/lib/translations";
 import { useEffect, useState } from "react";
 
 const sevPill: Record<Severity, string> = {
@@ -30,13 +30,13 @@ export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { resu
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-              {brandName} · Diagnostic Code
+              {brandName} · {t("diagnosticCode")}
             </div>
             <div className="mt-1 font-mono text-3xl font-extrabold tracking-wider text-primary">
               {result.code}
             </div>
             <h3 className="mt-2 text-lg font-bold leading-tight text-foreground">
-              {result.title}
+              {translateDTCTitle(result.title, language)}
             </h3>
             {result.category && (
               <p className="mt-0.5 text-xs text-muted-foreground">{result.category}</p>
@@ -45,7 +45,7 @@ export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { resu
           <span
             className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${sevPill[result.severity]}`}
           >
-            {SEVERITY_LABEL[result.severity]} {t("severityLabel")}
+            {t(result.severity === "critical" ? "high" : result.severity === "warning" ? "medium" : "low")} {t("severityLabel")}
           </span>
         </div>
         <p className="mt-3 text-sm leading-relaxed text-foreground/85">{result.problem}</p>

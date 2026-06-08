@@ -17,6 +17,8 @@ import {
   type FirebaseCode,
 } from "@/lib/firebaseDb";
 import { parseCSVToCodes, exportCodesAsCSV } from "@/lib/dataUtils";
+import { useAuth } from "@/components/AuthProvider";
+import { translations, translateDTCTitle } from "@/lib/translations";
 
 export const Route = createFileRoute("/codes")({
   component: CodesPage,
@@ -31,6 +33,9 @@ const sevPill: Record<Severity, string> = {
 };
 
 function CodesPage() {
+  const { language } = useAuth();
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
   const [firebaseCodes, setFirebaseCodes] = useState<FirebaseCode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [brandFilter, setBrandFilter] = useState<string>("all");
@@ -132,7 +137,7 @@ function CodesPage() {
 
   const all = useMemo(() => {
     const builtIn = getAllBuiltInCodes().map((c) => ({ ...c, isCustom: false, isEditable: false }));
-    const custom = firebaseCodes.map((c) => ({ ...c, isCustom: c.isCustom !== false, isEditable: true }));
+    const custom = firebaseCodes.map((c) => ({ ...c, isCustom: c.isCustom === true, isEditable: true }));
     return [...custom, ...builtIn];
   }, [firebaseCodes]);
 
@@ -163,7 +168,7 @@ function CodesPage() {
           to="/"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to Search
+          <ArrowLeft className="h-4 w-4" /> {t("backToSearch")}
         </Link>
         <div className="flex gap-2">
            <input 
@@ -179,7 +184,7 @@ function CodesPage() {
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold bg-secondary text-foreground hover:bg-secondary/80 transition-colors border border-border disabled:opacity-50"
            >
               {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              Import CSV
+              {t("importCsvBtn")}
            </button>
            <button
               onClick={() => exportCodesAsCSV(all)}
@@ -187,7 +192,7 @@ function CodesPage() {
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold bg-secondary text-foreground hover:bg-secondary/80 transition-colors border border-border disabled:opacity-50"
            >
               <Download className="h-4 w-4" />
-              Export
+              {t("exportBtn")}
            </button>
         </div>
       </div>
@@ -236,7 +241,7 @@ function CodesPage() {
       {/* Add new code header */}
       <section className="mb-6 flex items-center justify-between">
         <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground">
-          Code Dictionary
+          {t("dictionaryHeader")}
         </h2>
         <button
           onClick={() => {
@@ -252,7 +257,7 @@ function CodesPage() {
           style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
         >
           {showForm ? <ArrowLeft className="h-4 w-4" strokeWidth={3} /> : <Plus className="h-4 w-4" strokeWidth={3} />}
-          {showForm ? (editingCode ? "Back" : "Cancel") : "Add Custom Code"}
+          {showForm ? (editingCode ? t("backBtn") : t("cancelBtn")) : t("addCustomBtn")}
         </button>
       </section>
 
@@ -272,7 +277,7 @@ function CodesPage() {
       {/* Filter bar */}
       <section className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xs font-bold uppercase tracking-[0.25em] text-muted-foreground flex items-center gap-2">
-          All Codes <span className="text-foreground/60 rounded-full bg-secondary px-2 py-0.5">{filtered.length}</span>
+          {t("allCodesLabel")} <span className="text-foreground/60 rounded-full bg-secondary px-2 py-0.5">{filtered.length}</span>
           {isLoading && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
         </h2>
         <div className="flex flex-wrap items-center gap-2">
@@ -281,20 +286,20 @@ function CodesPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search code..."
+              placeholder={t("searchDtcPlaceholder")}
               className="h-9 w-44 rounded-lg border border-border bg-input pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
             />
           </div>
             <div className="flex gap-1.5 items-center">
               {/* Brand Dropdown */}
-              <label className="text-xs font-medium text-muted-foreground mr-2">Brand</label>
+              <label className="text-xs font-medium text-muted-foreground mr-2">{t("brandLabel")}</label>
               <select
                 value={brandFilter}
                 onChange={e => setBrandFilter(e.target.value)}
                 className="rounded-lg border border-border bg-card px-3 py-1 text-sm focus:border-primary mr-4"
               >
-                <option value="all">All</option>
-                <option value="generic">Generic</option>
+                <option value="all">{t("allOption")}</option>
+                <option value="generic">{t("generic")}</option>
                 {BRANDS.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
@@ -302,19 +307,22 @@ function CodesPage() {
 
               {/* Severity Filter Buttons */}
               <div className="flex gap-1.5">
-                {(["all", "Low", "Medium", "High"] as Filter[]).map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-                      filter === f
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    {f === "all" ? "All" : f}
-                  </button>
-                ))}
+                {(["all", "Low", "Medium", "High"] as Filter[]).map(f => {
+                  const filterKey = f === "all" ? "allOption" : f === "Low" ? "low" : f === "Medium" ? "medium" : "high";
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
+                        filter === f
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      {t(filterKey)}
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Custom Code Toggle */}
@@ -325,7 +333,7 @@ function CodesPage() {
                   onChange={e => setShowCustomOnly(e.target.checked)}
                   className="form-checkbox h-4 w-4 text-primary border-border"
                 />
-                <span className="text-xs font-medium text-muted-foreground">Custom Only</span>
+                <span className="text-xs font-medium text-muted-foreground">{t("customOnly")}</span>
               </label>
             </div>
         </div>
@@ -352,7 +360,7 @@ function CodesPage() {
           <div className="col-span-full py-16 text-center rounded-3xl border border-dashed border-border bg-card/30 flex flex-col items-center justify-center gap-3">
              <Search className="h-8 w-8 text-muted-foreground opacity-50" />
             <p className="text-sm text-muted-foreground font-medium">
-              No codes match your filter.
+              {t("noCodesMatch")}
             </p>
           </div>
         )}
@@ -370,7 +378,11 @@ function CodeTile({
   onDelete?: () => void;
   onEdit?: () => void;
 }) {
+  const { language } = useAuth();
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
   const brand = BRANDS.find((b) => b.id === code.brandId)?.name ?? "Global OBD2";
+  const severityKey = code.severity === "critical" ? "high" : code.severity === "warning" ? "medium" : "low";
+
   return (
     <article
       className="group relative rounded-2xl border border-border bg-card p-5 transition-colors hover:border-primary/40"
@@ -384,11 +396,13 @@ function CodeTile({
           <span
             className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${sevPill[code.severity]}`}
           >
-            {SEVERITY_LABEL[code.severity]}
+            {t(severityKey)}
           </span>
         </div>
       </div>
-      <h3 className="mt-2 text-sm font-bold leading-snug text-foreground line-clamp-2">{code.title}</h3>
+      <h3 className="mt-2 text-sm font-bold leading-snug text-foreground line-clamp-2">
+        {translateDTCTitle(code.title, language)}
+      </h3>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {/* Status badge: Custom / Generic / Brand */}
           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
@@ -399,9 +413,9 @@ function CodeTile({
                 : "bg-primary/15 text-primary border border-primary/30"
           }`}>
             {code.isCustom
-              ? "Custom"
+              ? t("custom")
               : (code.brandId === "global_obd2" || code.brandId === "generic")
-                ? "Generic"
+                ? t("generic")
                 : (BRANDS.find((b) => b.id === code.brandId)?.name ?? "Unknown")}
           </span>
       </div>
@@ -442,6 +456,9 @@ function AddCodeForm({
   initialData?: FirebaseCode | null;
   onCancel?: () => void;
 }) {
+  const { language } = useAuth();
+  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
   const [code, setCode] = useState(initialData?.code ?? "");
   const [title, setTitle] = useState(initialData?.title ?? "");
   const [brandId, setBrandId] = useState(initialData?.brandId ?? "global_obd2");
@@ -516,8 +533,8 @@ function AddCodeForm({
     >
       <div className="sm:col-span-2 border-b border-border pb-2 mb-2 flex items-center justify-between">
          <div>
-           <h3 className="text-sm font-bold">{initialData ? "Edit Diagnostic Code" : "New Diagnostic Code"}</h3>
-           <p className="text-xs text-muted-foreground">{initialData ? "Modify code details and save changes." : "Add a code to the shared global dictionary."}</p>
+            <h3 className="text-sm font-bold">{initialData ? t("editDiagnosticCode") : t("newDiagnosticCode")}</h3>
+            <p className="text-xs text-muted-foreground">{initialData ? t("editDiagnosticCodeDesc") : t("newDiagnosticCodeDesc")}</p>
          </div>
          {onCancel && (
            <button 
@@ -525,18 +542,18 @@ function AddCodeForm({
              onClick={onCancel}
              className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1 bg-secondary/50"
            >
-             Cancel
+             {t("cancelBtn")}
            </button>
          )}
       </div>
 
-      <Field label="DTC Code *">
+      <Field label={t("dtcCodeLabel")}>
         <input required disabled={isLoading || !!initialData} className={inputCls + " font-mono uppercase"} value={code} onChange={(e) => setCode(e.target.value)} placeholder="e.g. P0123" />
       </Field>
-      <Field label="Fault Title *">
+      <Field label={t("faultTitleLabel")}>
         <input required disabled={isLoading} className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Throttle Position Sensor High Input" />
       </Field>
-      <Field label="Motorcycle Brand *">
+      <Field label={t("motorcycleBrandLabel")}>
         <select disabled={isLoading || !!initialData} className={inputCls} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
           <option value="global_obd2">Global OBD2 / Generic</option>
           {BRANDS.map((b) => (
@@ -544,29 +561,29 @@ function AddCodeForm({
           ))}
         </select>
       </Field>
-      <Field label="Severity Level *">
+      <Field label={t("severityLevelLabel")}>
         <select disabled={isLoading} className={inputCls} value={severity} onChange={(e) => setSeverity(e.target.value as Severity)}>
-          <option value="info">Low (Info)</option>
-          <option value="warning">Medium (Warning)</option>
-          <option value="critical">High (Critical)</option>
+          <option value="info">{t("lowSeverity")}</option>
+          <option value="warning">{t("mediumSeverity")}</option>
+          <option value="critical">{t("highSeverity")}</option>
         </select>
       </Field>
-      <Field label="Category / System">
-        <input disabled={isLoading} className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Engine, Throttle, ABS" />
+      <Field label={t("systemCategoryLabel")}>
+        <input disabled={isLoading} className={inputCls} value={category} onChange={(e) => setCategory(e.target.value)} placeholder={t("categoryPlaceholder")} />
       </Field>
-      <Field label="Component Location">
-        <input disabled={isLoading} className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Engine front - Left side" />
+      <Field label={t("componentLocationLabel")}>
+        <input disabled={isLoading} className={inputCls} value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("locationPlaceholder")} />
       </Field>
-      <Field label="Problem Description" full>
-        <textarea disabled={isLoading} className={taCls} value={problem} onChange={(e) => setProblem(e.target.value)} placeholder="Briefly describe what this fault means..." />
+      <Field label={t("problemDescriptionLabel")} full>
+        <textarea disabled={isLoading} className={taCls} value={problem} onChange={(e) => setProblem(e.target.value)} placeholder={t("problemDescriptionPlaceholder")} />
       </Field>
-      <Field label="Symptoms (one per line)">
+      <Field label={t("symptomsLabel")}>
         <textarea disabled={isLoading} className={taCls} value={symptoms} onChange={(e) => setSymptoms(e.target.value)} placeholder="- Hard starting&#10;- Poor fuel economy" />
       </Field>
-      <Field label="Possible Causes (one per line)">
+      <Field label={t("causesLabel")}>
         <textarea disabled={isLoading} className={taCls} value={causes} onChange={(e) => setCauses(e.target.value)} placeholder="- Faulty sensor&#10;- Damaged wiring harness" />
       </Field>
-      <Field label="Recommended Fixes (one per line)" full>
+      <Field label={t("fixesLabel")} full>
         <textarea disabled={isLoading} className={taCls} value={actions} onChange={(e) => setActions(e.target.value)} placeholder="- Check sensor resistance&#10;- Replace if out of spec" />
       </Field>
       <div className="sm:col-span-2 flex justify-end pt-2 border-t border-border mt-2">
@@ -577,7 +594,7 @@ function AddCodeForm({
           style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
         >
           {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={3} />} 
-          {isLoading ? "Saving..." : initialData ? "Update Code" : "Save Code to Database"}
+          {isLoading ? t("savingLoader") : initialData ? t("updateCodeBtn") : t("saveToDbBtn")}
         </button>
       </div>
     </form>

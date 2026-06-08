@@ -34,9 +34,9 @@ export function Sidebar() {
   const t = (key: string) => translations[key]?.[language] || key;
 
   const navItems = [
-    { label: translations["dashboard"].english, icon: LayoutDashboard, href: "/" },
-    { label: translations["activeUsers"].english, icon: Database, href: "/codes" },
-    { label: translations["settings"].english, icon: Settings, href: "/settings" },
+    { label: t("dashboard"), icon: LayoutDashboard, href: "/" },
+    { label: t("activeUsers"), icon: Database, href: "/codes" },
+    { label: t("settings"), icon: Settings, href: "/settings" },
   ];
 
   const languages: { id: typeof language; label: string }[] = [
