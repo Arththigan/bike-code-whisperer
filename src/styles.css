@@ -118,12 +118,13 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html, body, #root { min-height: 100vh; }
+  html, body, #root { min-height: 100dvh; }
   body {
     background: var(--gradient-hero);
     background-attachment: fixed;
     color: var(--color-foreground);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    overscroll-behavior: none;
   }
 }
 
