@@ -164,6 +164,7 @@ function CodesPage() {
   });
 
   return (
+    <>
     <main className="mx-auto max-w-6xl px-4 pb-16 pt-6 sm:pt-10">
       <div className="mb-6 flex items-center justify-between">
         <Link
@@ -393,6 +394,7 @@ function CodesPage() {
         </div>
       </div>
     )}
+    </>
   );
 }
 function CodeTile({
