@@ -1,4 +1,6 @@
-import { History, X } from "lucide-react";
+import { History, Pin } from "lucide-react";
+import type { PinnedItem } from "./PinnedCodes";
+import { isPinned } from "./PinnedCodes";
 
 export interface HistoryItem {
   code: string;
@@ -11,10 +13,14 @@ export function RecentHistory({
   items,
   onPick,
   onClear,
+  pinned,
+  onTogglePin,
 }: {
   items: HistoryItem[];
   onPick: (item: HistoryItem) => void;
   onClear: () => void;
+  pinned: PinnedItem[];
+  onTogglePin: (item: HistoryItem) => void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -28,17 +34,31 @@ export function RecentHistory({
         </button>
       </div>
       <div className="flex flex-wrap gap-2">
-        {items.map((it) => (
-          <button
-            key={`${it.brandId}-${it.code}-${it.ts}`}
-            onClick={() => onPick(it)}
-            className="group inline-flex items-center gap-2 rounded-full border border-border bg-background/50 px-3 py-1.5 text-xs font-medium hover:border-primary hover:bg-card"
-          >
-            <span className="font-mono font-bold text-primary">{it.code}</span>
-            <span className="text-muted-foreground">·</span>
-            <span className="text-foreground/80">{it.brandName}</span>
-          </button>
-        ))}
+        {items.map((it) => {
+          const pinned_ = isPinned(pinned, it.code, it.brandId);
+          return (
+            <div
+              key={`${it.brandId}-${it.code}-${it.ts}`}
+              className="group inline-flex items-center gap-2 rounded-full border border-border bg-background/50 px-3 py-1.5 text-xs font-medium hover:border-primary hover:bg-card transition-all"
+            >
+              <button
+                onClick={() => onPick(it)}
+                className="inline-flex items-center gap-2"
+              >
+                <span className="font-mono font-bold text-primary">{it.code}</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-foreground/80">{it.brandName}</span>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onTogglePin(it); }}
+                className={`transition-all ${pinned_ ? "text-warning opacity-100" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-warning"}`}
+                title={pinned_ ? "Unpin" : "Pin this code"}
+              >
+                <Pin className={`h-3 w-3 ${pinned_ ? "fill-warning/60" : ""}`} />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

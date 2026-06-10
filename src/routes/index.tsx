@@ -4,6 +4,8 @@ import { BrandSelector } from "@/components/BrandSelector";
 import { SearchBar } from "@/components/SearchBar";
 import { NoResultCard, ResultCard } from "@/components/ResultCard";
 import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/components/RecentHistory";
+import { PinnedCodes, PinnedItem, loadPinned, savePinned, togglePin } from "@/components/PinnedCodes";
+import { TipCard } from "@/components/TipCard";
 import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
 import { lookupFirebaseCode } from "@/lib/firebaseDb";
 import { analyzeCodeWithAI } from "@/lib/gemini";
@@ -38,12 +40,14 @@ function Index() {
   const [brandId, setBrandId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisState | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [pinned, setPinned] = useState<PinnedItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const { language } = useAuth();
 
   useEffect(() => {
     setHistory(loadHistory());
+    setPinned(loadPinned());
     const last = localStorage.getItem("obd-decoder-last-brand");
     if (last && BRANDS.some((b) => b.id === last)) setBrandId(last);
     // Restore last analysis result from session
@@ -148,6 +152,24 @@ function Index() {
           />
         </section>
 
+        {/* Pinned Codes */}
+        {pinned.length > 0 && (
+          <section className="mb-7">
+            <PinnedCodes
+              items={pinned}
+              onPick={(it) => {
+                setBrandId(it.brandId);
+                runAnalysis(it.code, it.brandId);
+              }}
+              onUnpin={(it) => {
+                const next = togglePin(pinned, it);
+                setPinned(next);
+                savePinned(next);
+              }}
+            />
+          </section>
+        )}
+
         {/* History */}
         <section className="mb-7">
           <div className="mb-3 px-1">
@@ -157,6 +179,12 @@ function Index() {
           </div>
           <RecentHistory
             items={history}
+            pinned={pinned}
+            onTogglePin={(it) => {
+              const next = togglePin(pinned, it);
+              setPinned(next);
+              savePinned(next);
+            }}
             onClear={() => {
               setHistory([]);
               saveHistory([]);
@@ -167,6 +195,13 @@ function Index() {
             }}
           />
         </section>
+
+        {/* Did You Know tips — shown when no result is displayed */}
+        {!analysis && !isAnalyzing && (
+          <section className="mb-7">
+            <TipCard language={language} />
+          </section>
+        )}
 
         {/* Result */}
         <section id="result-anchor">
