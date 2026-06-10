@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Plus, Search, Trash2, ArrowLeft, Upload, Download, Loader2, Pencil, X } from "lucide-react";
+import { Plus, Search, Trash2, ArrowLeft, Upload, Download, Loader2, Pencil, X, ChevronDown, Check } from "lucide-react";
 import { toast } from "sonner";
 import { ResultCard } from "@/components/ResultCard";
 import {
@@ -308,24 +308,10 @@ function CodesPage() {
                 ))}
               </select>
 
-              {/* Severity Filter Buttons */}
-              <div className="flex gap-1.5">
-                {(["all", "Low", "Medium", "High"] as Filter[]).map(f => {
-                  const filterKey = f === "all" ? "allOption" : f === "Low" ? "low" : f === "Medium" ? "medium" : "high";
-                  return (
-                    <button
-                      key={f}
-                      onClick={() => setFilter(f)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-                        filter === f
-                          ? "bg-primary text-primary-foreground"
-                          : "border border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary"
-                      }`}
-                    >
-                      {t(filterKey)}
-                    </button>
-                  );
-                })}
+              {/* Severity Filter Dropdown */}
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-muted-foreground">Priority</label>
+                <SeverityDropdown filter={filter} setFilter={setFilter} t={t} />
               </div>
 
               {/* Custom Code Toggle */}
@@ -397,6 +383,85 @@ function CodesPage() {
     </>
   );
 }
+function SeverityDropdown({
+  filter,
+  setFilter,
+  t,
+}: {
+  filter: Filter;
+  setFilter: (f: Filter) => void;
+  t: (key: string) => string;
+}) {
+  const [sevOpen, setSevOpen] = useState(false);
+  const sevRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (sevRef.current && !sevRef.current.contains(event.target as Node)) {
+        setSevOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const filterKey =
+    filter === "all"
+      ? "allOption"
+      : filter === "Low"
+      ? "low"
+      : filter === "Medium"
+      ? "medium"
+      : "high";
+
+  return (
+    <div ref={sevRef} className="relative">
+      <button
+        onClick={() => setSevOpen(!sevOpen)}
+        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-foreground hover:bg-secondary transition-colors min-w-[90px] justify-between"
+      >
+        <span>{t(filterKey)}</span>
+        <ChevronDown
+          className={`h-3 w-3 transition-transform duration-200 ${sevOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+      {sevOpen && (
+        <div className="absolute top-full left-0 mt-1 w-36 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-top-2 duration-200 z-50">
+          <div className="p-1">
+            {(["all", "Low", "Medium", "High"] as Filter[]).map((f) => {
+              const fKey =
+                f === "all"
+                  ? "allOption"
+                  : f === "Low"
+                  ? "low"
+                  : f === "Medium"
+                  ? "medium"
+                  : "high";
+              return (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setFilter(f);
+                    setSevOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
+                    filter === f
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  }`}
+                >
+                  {t(fKey)}
+                  {filter === f && <Check className="h-3 w-3" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CodeTile({
   code,
   onDelete,

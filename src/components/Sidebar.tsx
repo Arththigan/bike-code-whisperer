@@ -145,6 +145,25 @@ export function Sidebar() {
 
 export function MobileNav() {
     const location = useLocation();
+    const { language, setLanguage } = useAuth();
+    const [isLangOpen, setIsLangOpen] = useState(false);
+    const langRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (langRef.current && !langRef.current.contains(event.target as Node)) {
+                setIsLangOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const languages: { id: typeof language; label: string }[] = [
+        { id: "english", label: "English" },
+        { id: "tamil", label: "தமிழ் (Tamil)" },
+        { id: "tanglish", label: "Tanglish" },
+    ];
 
     return (
         <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
@@ -166,6 +185,45 @@ export function MobileNav() {
             )}>
                 <Database className="h-5 w-5" />
             </Link>
+
+            {/* Language Picker */}
+            <div ref={langRef} className="relative flex flex-col items-center">
+                <button
+                    onClick={() => setIsLangOpen(!isLangOpen)}
+                    className={cn(
+                        "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
+                        isLangOpen ? "text-primary" : "text-muted-foreground"
+                    )}
+                >
+                    <Globe className="h-5 w-5" />
+                </button>
+
+                {isLangOpen && (
+                    <div className="absolute bottom-full mb-2 w-40 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-bottom-2 duration-200 z-50">
+                        <div className="p-1">
+                            {languages.map((lang) => (
+                                <button
+                                    key={lang.id}
+                                    onClick={() => {
+                                        setLanguage(lang.id);
+                                        setIsLangOpen(false);
+                                    }}
+                                    className={cn(
+                                        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold transition-colors",
+                                        language === lang.id
+                                            ? "bg-primary/10 text-primary"
+                                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                    )}
+                                >
+                                    {lang.label}
+                                    {language === lang.id && <Check className="h-3 w-3" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <Link to="/settings" className={cn(
               "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
               location.pathname === "/settings" ? "text-primary" : "text-muted-foreground"
