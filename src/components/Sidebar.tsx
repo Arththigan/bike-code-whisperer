@@ -145,8 +145,10 @@ export function Sidebar() {
 
 export function MobileNav() {
     const location = useLocation();
-    const { language, setLanguage } = useAuth();
+    const navigate = useNavigate();
+    const { user, logout, language, setLanguage } = useAuth();
     const [isLangOpen, setIsLangOpen] = useState(false);
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
     const langRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -159,6 +161,16 @@ export function MobileNav() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    const handleLogout = () => {
+        setIsProfileOpen(false);
+        logout();
+        navigate({ to: "/login" });
+    };
+
+    const initials = user?.name
+        ? user.name.split(" ").map(n => n[0]).join("").toUpperCase()
+        : "??";
+
     const languages: { id: typeof language; label: string }[] = [
         { id: "english", label: "English" },
         { id: "tamil", label: "தமிழ் (Tamil)" },
@@ -166,70 +178,136 @@ export function MobileNav() {
     ];
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
-          style={{ 
-            paddingBottom: "env(safe-area-inset-bottom)",
-            transform: "translate3d(0,0,0)",
-            willChange: "transform",
-          }}
-        >
-            <Link to="/" className={cn(
-              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
-              location.pathname === "/" ? "text-primary" : "text-muted-foreground"
-            )}>
-                <LayoutDashboard className="h-5 w-5" />
-            </Link>
-            <Link to="/codes" className={cn(
-              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
-              location.pathname === "/codes" ? "text-primary" : "text-muted-foreground"
-            )}>
-                <Database className="h-5 w-5" />
-            </Link>
-
-            {/* Language Picker */}
-            <div ref={langRef} className="relative flex flex-col items-center">
-                <button
-                    onClick={() => setIsLangOpen(!isLangOpen)}
-                    className={cn(
-                        "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
-                        isLangOpen ? "text-primary" : "text-muted-foreground"
-                    )}
+        <>
+            {/* Profile Bottom Sheet Overlay */}
+            {isProfileOpen && (
+                <div
+                    className="fixed inset-0 z-50 sm:hidden"
+                    onClick={() => setIsProfileOpen(false)}
                 >
-                    <Globe className="h-5 w-5" />
-                </button>
+                    {/* Backdrop */}
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200" />
 
-                {isLangOpen && (
-                    <div className="absolute bottom-full mb-2 w-40 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-bottom-2 duration-200 z-50">
-                        <div className="p-1">
-                            {languages.map((lang) => (
-                                <button
-                                    key={lang.id}
-                                    onClick={() => {
-                                        setLanguage(lang.id);
-                                        setIsLangOpen(false);
-                                    }}
-                                    className={cn(
-                                        "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold transition-colors",
-                                        language === lang.id
-                                            ? "bg-primary/10 text-primary"
-                                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                    )}
-                                >
-                                    {lang.label}
-                                    {language === lang.id && <Check className="h-3 w-3" />}
-                                </button>
-                            ))}
+                    {/* Sheet */}
+                    <div
+                        className="absolute bottom-16 left-0 right-0 mx-3 mb-2 overflow-hidden rounded-2xl border border-border bg-card shadow-2xl animate-in slide-in-from-bottom-4 duration-300"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        {/* Profile Header */}
+                        <div className="flex items-center gap-4 bg-secondary/30 px-5 py-4 border-b border-border/50">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-foreground/20 text-primary-foreground font-bold text-sm shadow-lg shadow-primary/20">
+                                {initials}
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                                <span className="text-sm font-bold truncate text-foreground">
+                                    {user?.name || "Guest User"}
+                                </span>
+                                <span className="text-[11px] text-muted-foreground truncate">
+                                    {user?.username || ""}
+                                </span>
+                                <span className="mt-0.5 inline-flex w-fit items-center rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary uppercase tracking-wide">
+                                    {user?.role === "admin" ? "Admin" : "Workshop Member"}
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                )}
-            </div>
 
-            <Link to="/settings" className={cn(
-              "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-4 py-1",
-              location.pathname === "/settings" ? "text-primary" : "text-muted-foreground"
-            )}>
-                <Settings className="h-5 w-5" />
-            </Link>
-        </div>
-    )
+                        {/* Sign Out Button */}
+                        <button
+                            onClick={handleLogout}
+                            className="flex w-full items-center gap-3 px-5 py-4 text-sm font-semibold text-destructive hover:bg-destructive/5 transition-colors"
+                        >
+                            <LogOut className="h-5 w-5" />
+                            Sign Out
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Bottom Nav Bar */}
+            <div
+                className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
+                style={{
+                    paddingBottom: "env(safe-area-inset-bottom)",
+                    transform: "translate3d(0,0,0)",
+                    willChange: "transform",
+                }}
+            >
+                <Link to="/" className={cn(
+                    "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
+                    location.pathname === "/" ? "text-primary" : "text-muted-foreground"
+                )}>
+                    <LayoutDashboard className="h-5 w-5" />
+                </Link>
+
+                <Link to="/codes" className={cn(
+                    "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
+                    location.pathname === "/codes" ? "text-primary" : "text-muted-foreground"
+                )}>
+                    <Database className="h-5 w-5" />
+                </Link>
+
+                {/* Language Picker */}
+                <div ref={langRef} className="relative flex flex-col items-center">
+                    <button
+                        onClick={() => setIsLangOpen(!isLangOpen)}
+                        className={cn(
+                            "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
+                            isLangOpen ? "text-primary" : "text-muted-foreground"
+                        )}
+                    >
+                        <Globe className="h-5 w-5" />
+                    </button>
+
+                    {isLangOpen && (
+                        <div className="absolute bottom-full mb-2 w-40 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-bottom-2 duration-200 z-50">
+                            <div className="p-1">
+                                {languages.map((lang) => (
+                                    <button
+                                        key={lang.id}
+                                        onClick={() => {
+                                            setLanguage(lang.id);
+                                            setIsLangOpen(false);
+                                        }}
+                                        className={cn(
+                                            "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold transition-colors",
+                                            language === lang.id
+                                                ? "bg-primary/10 text-primary"
+                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                                        )}
+                                    >
+                                        {lang.label}
+                                        {language === lang.id && <Check className="h-3 w-3" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <Link to="/settings" className={cn(
+                    "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
+                    location.pathname === "/settings" ? "text-primary" : "text-muted-foreground"
+                )}>
+                    <Settings className="h-5 w-5" />
+                </Link>
+
+                {/* Profile Avatar Button */}
+                <button
+                    onClick={() => setIsProfileOpen(!isProfileOpen)}
+                    className={cn(
+                        "flex flex-col items-center gap-1 transition-colors px-3 py-1",
+                        isProfileOpen ? "opacity-100" : "opacity-80 hover:opacity-100"
+                    )}
+                    aria-label="Profile"
+                >
+                    <div className={cn(
+                        "flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-foreground/20 text-primary-foreground font-bold text-[10px] transition-all",
+                        isProfileOpen && "ring-2 ring-primary ring-offset-1 ring-offset-card"
+                    )}>
+                        {initials}
+                    </div>
+                </button>
+            </div>
+        </>
+    );
 }
