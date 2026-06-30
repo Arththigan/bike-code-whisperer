@@ -149,21 +149,23 @@ function RootComponent() {
     if (mainEl) mainEl.scrollTop = 0;
   }, [location.pathname]);
 
-  // Auth Protection
+  // Auth Protection — redirect logged-in users away from login, redirect guests to login
   useEffect(() => {
     if (!isLoading) {
-      const isUserPage = location.pathname === "/login";
-      
-      if (!user && !isUserPage) {
+      const isLoginPage = location.pathname === "/login";
+      if (!user && !isLoginPage) {
         navigate({ to: "/login" });
+      } else if (user && isLoginPage) {
+        navigate({ to: "/" });
       }
     }
   }, [user, isLoading, location.pathname]);
 
   if (isLoading) return null;
 
-  const isUserLogin = location.pathname === "/login";
-  const hideNav = isUserLogin || showSplash;
+  // Hide all nav elements on login page OR splash OR when user is not authenticated
+  const isLoginPage = location.pathname === "/login";
+  const hideNav = isLoginPage || showSplash || !user;
 
   return (
     <QueryClientProvider client={queryClient}>
