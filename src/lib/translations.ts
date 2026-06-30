@@ -441,67 +441,8 @@ export const translations: Translations = {
   }
 };
 
-const dTCWordTranslations: Record<string, string> = {
-  "throttle": "த்ராட்டில் (Throttle)",
-  "position": "நிலை (Position)",
-  "sensor": "சென்சார் (Sensor)",
-  "circuit": "மின்சுற்று (Circuit)",
-  "malfunction": "கோளாறு (Malfunction)",
-  "high": "அதிக (High)",
-  "low": "குறைந்த (Low)",
-  "input": "உள்ளீடு",
-  "output": "வெளியீடு",
-  "voltage": "மின்னழுத்தம் (Voltage)",
-  "open": "துண்டிக்கப்பட்ட (Open)",
-  "short": "குறுக்கு சுற்று (Short)",
-  "ground": "எர்த் (Ground)",
-  "control": "கட்டுப்பாடு (Control)",
-  "valve": "வால்வ் (Valve)",
-  "fuel": "எரிபொருள் (Fuel)",
-  "engine": "எஞ்சின் (Engine)",
-  "temperature": "வெப்பநிலை (Temperature)",
-  "injector": "இன்ஜெக்டர் (Injector)",
-  "system": "அமைப்பு (System)",
-  "pressure": "அழுத்தம் (Pressure)",
-  "cylinder": "சிலிண்டர் (Cylinder)",
-  "performance": "செயல்திறன் (Performance)",
-  "range": "வரம்பு (Range)",
-  "o2": "ஆக்ஸிஜன் (O2)",
-  "oxygen": "ஆக்ஸிஜன் (Oxygen)",
-  "heater": "ஹீட்டர் (Heater)",
-  "igniter": "இக்னிட்டர் (Igniter)",
-  "ignition": "இக்னிஷன் (Ignition)",
-  "coil": "காயில் (Coil)",
-  "signal": "சிக்னல் (Signal)",
-  "speed": "வேகம் (Speed)",
-  "vehicle": "வாகனம் (Vehicle)",
-  "exhaust": "எக்ஸாஸ்ட் (Exhaust)",
-  "leak": "கசிவு (Leak)",
-  "detected": "கண்டறியப்பட்டது",
-  "invalid": "தவறான",
-  "communication": "தொடர்பு (Communication)",
-  "lost": "இழக்கப்பட்டது",
-  "harness": "ஹார்னஸ் (Harness)",
-  "connector": "கனெக்டர் (Connector)",
-  "battery": "பேட்டரி (Battery)",
-  "relay": "ரிலே (Relay)"
-};
-
-export function translateDTCTitle(title: string, language: Language): string {
-  if (language !== "tamil" && language !== "tanglish") return title;
-  
-  if (language === "tanglish") {
-    return title;
-  }
-
-  let translated = title;
-  const sortedKeys = Object.keys(dTCWordTranslations).sort((a, b) => b.length - a.length);
-  
-  for (const key of sortedKeys) {
-    const regex = new RegExp(`\\b${key}\\b`, 'gi');
-    translated = translated.replace(regex, dTCWordTranslations[key]);
-  }
-  
-  return translated;
+// Title stays as-is — full translation handled by Gemini + obd_translations cache
+export function translateDTCTitle(title: string, _language: Language): string {
+  return title;
 }
 

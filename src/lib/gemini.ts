@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { type OBDCode, type Severity } from "@/data/obdCodes";
-import { cacheAICode } from "./firebaseDb";
+import { cacheAICode, getOBDTranslationCache, saveOBDTranslationCache, type OBDTranslationCache } from "./firebaseDb";
 
 const getEnv = (key: string): string | undefined => {
   if (typeof import.meta !== "undefined" && import.meta.env) {
@@ -24,7 +24,7 @@ export async function analyzeCodeWithAI(brand: string, brandId: string, code: st
     return null;
   }
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const contextPrompt = localContext 
     ? `Technical Context from Database: ${JSON.stringify(localContext)}`
@@ -63,7 +63,7 @@ export async function analyzeCodeWithAI(brand: string, brandId: string, code: st
 
   try {
     const result = await model.generateContent(prompt);
-    const response = await result.response;
+    const response = result.response;
     const text = response.text();
     console.log("Gemini Raw Response:", text);
     
@@ -99,6 +99,55 @@ export async function analyzeCodeWithAI(brand: string, brandId: string, code: st
     }
   } catch (error) {
     console.error("Gemini AI error:", error);
+    return null;
+  }
+}
+
+// ─── Card Translation ─────────────────────────────────────────────────────────
+// Uses a server function so the Gemini API key stays server-side (never in browser).
+// Result is stored in obd_translations collection for cache-first future reads.
+
+import { translateCardViaServer } from "./translateServer";
+
+export async function translateCardWithAI(
+  brandId: string,
+  code: OBDCode,
+  targetLang: "tanglish" | "tamil"
+): Promise<OBDTranslationCache | null> {
+  console.log(`[translateCardWithAI] called for ${brandId}_${code.code}_${targetLang}`);
+
+  // 1. Firestore cache check first — zero tokens used
+  const cached = await getOBDTranslationCache(brandId, code.code, targetLang);
+  if (cached) {
+    console.log(`[translateCardWithAI] cache HIT — returning from obd_translations`);
+    return cached;
+  }
+  console.log(`[translateCardWithAI] cache MISS — calling server function...`);
+
+  try {
+    // 2. Call server function — pass only plain serializable fields
+    const translation = await (translateCardViaServer as any)({
+      data: {
+        brandId,
+        targetLang,
+        code: {
+          code: code.code,
+          title: code.title,
+          problem: code.problem,
+          affectedPart: code.affectedPart ?? "",
+          symptoms: code.symptoms,
+          actions: code.actions,
+          location: code.location ?? "",
+        },
+      },
+    }) as OBDTranslationCache;
+
+    // 3. Save to obd_translations — future reads skip server call entirely
+    saveOBDTranslationCache(translation).catch(() => {});
+
+    return translation;
+  } catch (e) {
+    console.error("translateCardWithAI error:", e);
     return null;
   }
 }
