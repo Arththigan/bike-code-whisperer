@@ -103,10 +103,10 @@ function Index() {
         const aiResult = await analyzeCodeWithAI(bName, bId, q, dbResult, language);
         if (aiResult) {
           result = aiResult;
-          if (forceAI) toast.success("AI Enhancement Complete!");
+          if (forceAI) toast.success("Analysis Complete!");
         }
       } catch (err: any) {
-        if (forceAI) toast.error("AI Error: " + (err.message || "Failed to enhance"));
+        if (forceAI) toast.error("Analysis Error: " + (err.message || "Failed to analyze"));
       }
     }
 
@@ -216,7 +216,7 @@ function Index() {
           {isAnalyzing && (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-              <p className="text-sm font-medium text-muted-foreground">Gemini AI is analyzing the code...</p>
+              <p className="text-sm font-medium text-muted-foreground">Analyzing the code...</p>
             </div>
           )}
           {analysis && !isAnalyzing && (

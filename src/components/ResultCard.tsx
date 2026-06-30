@@ -143,7 +143,7 @@ export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing 
             style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
           >
             <Sparkles className="h-4 w-4" />
-            Enhance Details with AI
+            Analyze Details
           </button>
         </div>
       )}
@@ -164,7 +164,7 @@ export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing 
                 <Sparkles className="h-4 w-4 text-primary animate-pulse" />
               </div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
-                Gemini AI Diagnostics & Guide
+                Analyzing · Diagnostic Guide
               </h4>
             </div>
             <ChevronDown
@@ -211,7 +211,7 @@ function Quadrant({
 }
 
 const AI_STEPS = [
-  { en: "Connecting to Gemini AI...", ta: "Gemini AI உடன் இணைக்கிறது...", tl: "Gemini AI-ku connect aguthu..." },
+  { en: "Connecting to analysis engine...", ta: "பகுப்பாய்வு தொடங்குகிறது...", tl: "Analysis start aguthu..." },
   { en: "Reading diagnostic fault code...", ta: "தொழில்நுட்பக் குறியீடு படிக்கிறது...", tl: "Fault code padikuthu..." },
   { en: "Analyzing fault patterns...", ta: "தவறான முறைகளை ஆய்வு செய்கிறது...", tl: "Fault patterns analyze aguthu..." },
   { en: "Cross-referencing service data...", ta: "சேவை தரவுகளை ஒப்பிடுகிறது...", tl: "Service data cross-check pannuthu..." },
@@ -247,7 +247,7 @@ function AILoadingCard({ language }: { language: string }) {
         </div>
         <div>
           <p className="text-xs font-extrabold uppercase tracking-widest text-primary">
-            Gemini AI · Deep Analysis
+            Analysis · Deep Diagnostic
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {label}{dots}
@@ -297,7 +297,7 @@ function AILoadingCard({ language }: { language: string }) {
       {/* AI badge */}
       <div className="mt-5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
         <Cpu className="h-3 w-3" />
-        Powered by Google Gemini 2.5 Flash · Deep Diagnostic Mode
+        Analyzing · Deep Diagnostic Mode
       </div>
     </div>
   );
