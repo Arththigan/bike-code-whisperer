@@ -5,6 +5,7 @@ import {
   createRootRouteWithContext,
   useRouter,
   useNavigate,
+  useLocation,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -131,9 +132,8 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const { user, isLoading, logout } = useAuth();
-  const router = useRouter();
-  const location = router.state.location;
+  const { user, isLoading } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const [showSplash, setShowSplash] = useState(!HAS_SHOWN_SPLASH);
