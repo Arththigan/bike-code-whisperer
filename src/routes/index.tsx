@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { X } from "lucide-react";
 import { BrandSelector } from "@/components/BrandSelector";
 import { SearchBar } from "@/components/SearchBar";
 import { NoResultCard, ResultCard } from "@/components/ResultCard";
@@ -102,10 +103,10 @@ function Index() {
         const aiResult = await analyzeCodeWithAI(bName, bId, q, dbResult, language);
         if (aiResult) {
           result = aiResult;
-          if (forceAI) toast.success("AI Enhancement Complete!");
+          if (forceAI) toast.success("Analysis Complete!");
         }
       } catch (err: any) {
-        if (forceAI) toast.error("AI Error: " + (err.message || "Failed to enhance"));
+        if (forceAI) toast.error("Analysis Error: " + (err.message || "Failed to analyze"));
       }
     }
 
@@ -126,6 +127,13 @@ function Index() {
     setTimeout(() => {
       document.getElementById("result-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
+  };
+
+  const clearAnalysis = () => {
+    setAnalysis(null);
+    try { sessionStorage.removeItem(SESSION_KEY); } catch {}
+    // Scroll back to top smoothly
+    document.querySelector("main")?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -208,20 +216,37 @@ function Index() {
           {isAnalyzing && (
             <div className="flex flex-col items-center justify-center p-12 text-center">
               <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-              <p className="text-sm font-medium text-muted-foreground">Gemini AI is analyzing the code...</p>
+              <p className="text-sm font-medium text-muted-foreground">Analyzing the code...</p>
             </div>
           )}
           {analysis && !isAnalyzing && (
-            analysis.result ? (
-              <ResultCard
-                result={analysis.result}
-                brandName={BRANDS.find((b) => b.id === analysis.brandId)?.name ?? ""}
-                onEnhance={() => runAnalysis(analysis.query, analysis.brandId, true)}
-                isEnhancing={isEnhancing}
-              />
-            ) : (
-              <NoResultCard query={analysis.query} brandName={brandName || "this brand"} />
-            )
+            <>
+              {/* Clear result bar */}
+              <div className="mb-3 flex items-center justify-between px-1">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+                  Result · {analysis.query}
+                </span>
+                <button
+                  onClick={clearAnalysis}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-secondary/40 px-3 py-1.5 text-[11px] font-semibold text-muted-foreground transition-all hover:border-destructive/40 hover:bg-destructive/5 hover:text-destructive"
+                >
+                  <X className="h-3 w-3" />
+                  Clear
+                </button>
+              </div>
+
+              {analysis.result ? (
+                <ResultCard
+                  result={analysis.result}
+                  brandName={BRANDS.find((b) => b.id === analysis.brandId)?.name ?? ""}
+                  brandId={analysis.brandId}
+                  onEnhance={() => runAnalysis(analysis.query, analysis.brandId, true)}
+                  isEnhancing={isEnhancing}
+                />
+              ) : (
+                <NoResultCard query={analysis.query} brandName={brandName || "this brand"} />
+              )}
+            </>
           )}
         </section>
 

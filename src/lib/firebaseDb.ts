@@ -259,3 +259,55 @@ export async function cacheAICode(code: FirebaseCode & { language?: string }): P
     console.error("Firebase cache error:", e);
   }
 }
+
+// ─── obd_translations collection ─────────────────────────────────────────────
+// Stores Gemini-translated OBD card content, keyed by brandId_code_lang
+// So Gemini is only called once per code+language — all future reads hit cache.
+
+export interface OBDTranslationCache {
+  code: string;
+  brandId: string;
+  lang: string;
+  title: string;
+  problem: string;
+  affectedPart: string;
+  symptoms: string[];
+  actions: string[];
+  location: string;
+  cachedAt?: any;
+}
+
+const TRANS_COL = "obd_translations";
+
+/** Get cached translation from obd_translations collection */
+export async function getOBDTranslationCache(
+  brandId: string,
+  code: string,
+  lang: string
+): Promise<OBDTranslationCache | null> {
+  try {
+    const docId = `${brandId}_${code.toUpperCase()}_${lang}`;
+    const snap = await getDoc(doc(db, TRANS_COL, docId));
+    if (!snap.exists()) return null;
+    return snap.data() as OBDTranslationCache;
+  } catch (e) {
+    console.error("obd_translations get error:", e);
+    return null;
+  }
+}
+
+/** Save translated content to obd_translations collection */
+export async function saveOBDTranslationCache(
+  data: OBDTranslationCache
+): Promise<void> {
+  try {
+    const docId = `${data.brandId}_${data.code.toUpperCase()}_${data.lang}`;
+    await setDoc(doc(db, TRANS_COL, docId), {
+      ...data,
+      code: data.code.toUpperCase(),
+      cachedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("obd_translations save error:", e);
+  }
+}

@@ -1,0 +1,78 @@
+========================================
+  AK ARUN WIRING — TECH STACK
+  Bike OBD Code Whisperer
+========================================
+
+FRAMEWORK & RUNTIME
+--------------------
+React                     19.2.0
+TanStack Start            1.167.x
+TanStack Router           1.168.x
+TanStack Query            5.83.0
+Vite                      7.3.x
+TypeScript                (via eslint-typescript)
+Bun                       (package manager)
+
+BACKEND & DATABASE
+--------------------
+Firebase Firestore        12.13.0   (NoSQL database)
+Firebase Authentication   12.13.0   (email/password login)
+Firebase Analytics        12.13.0   (usage tracking)
+Firebase Hosting                    (static web hosting)
+Firebase Project ID       mrp-parts
+
+AI LAYER
+--------------------
+Google Gemini AI          gemini-1.5-flash
+@google/generative-ai     0.24.1
+
+UI & STYLING
+--------------------
+Tailwind CSS              4.2.1
+shadcn/ui                 (40+ components)
+Radix UI                  (headless primitives)
+Lucide React              0.575.0   (icons)
+tw-animate-css            1.3.4
+class-variance-authority  0.7.1
+tailwind-merge            3.5.0
+clsx                      2.1.1
+Sonner                    2.0.7     (toast notifications)
+Vaul                      1.1.2     (drawer/sheet)
+Embla Carousel            8.6.0
+Recharts                  2.15.4
+
+FORMS & VALIDATION
+--------------------
+React Hook Form           7.71.2
+Zod                       3.24.2
+@hookform/resolvers       5.2.2
+
+DEPLOYMENT & INFRA
+--------------------
+Firebase Hosting          (production)
+Cloudflare Workers        (@cloudflare/vite-plugin 1.25.5)
+GitHub Actions            (CI/CD — auto deploy on merge + PR previews)
+
+LOCALIZATION
+--------------------
+Static Dictionary         (English / Tamil / Tanglish — translations.ts)
+Word-map Translation      (DTC title word-by-word conversion)
+Gemini AI Translation     (full content in target language)
+Firestore Language Cache  (per-language result caching)
+
+DEV TOOLS
+--------------------
+ESLint                    9.32.0
+Prettier                  3.7.0
+ts-node                   10.9.1
+dotenv                    17.4.2
+Lovable.dev               (initial scaffold platform)
+
+ROUTES
+--------------------
+/           Dashboard (search + OBD result)
+/codes      Code dictionary (CRUD)
+/settings   Profile, theme, data import/export
+/login      Authentication
+
+========================================

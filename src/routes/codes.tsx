@@ -376,6 +376,7 @@ function CodesPage() {
           <ResultCard
             result={previewCode}
             brandName={BRANDS.find((b) => b.id === previewCode.brandId)?.name ?? "Global OBD2"}
+            brandId={previewCode.brandId ?? "generic"}
           />
         </div>
       </div>

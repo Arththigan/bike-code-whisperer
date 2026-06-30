@@ -1,9 +1,11 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
-import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu } from "lucide-react";
+import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu, Languages, ChevronDown } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { translations, translateDTCTitle } from "@/lib/translations";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { translateCardWithAI } from "@/lib/gemini";
+import type { OBDTranslationCache } from "@/lib/firebaseDb";
 
 const sevPill: Record<Severity, string> = {
   critical: "bg-critical/15 text-critical border border-critical/30",
@@ -11,14 +13,51 @@ const sevPill: Record<Severity, string> = {
   info: "bg-info/15 text-info border border-info/30",
 };
 
-export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { result: OBDCode; brandName: string; onEnhance?: () => void; isEnhancing?: boolean }) {
+export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing }: {
+  result: OBDCode;
+  brandName: string;
+  brandId: string;
+  onEnhance?: () => void;
+  isEnhancing?: boolean;
+}) {
   const { language } = useAuth();
-  const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+  const [cardLang, setCardLang] = useState<"english" | "tanglish">("english");
+  const [translated, setTranslated] = useState<OBDTranslationCache | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [isAIExpanded, setIsAIExpanded] = useState(true);
+  // Cache in memory so toggling back doesn't re-fetch
+  const translationMemCache = useRef<OBDTranslationCache | null>(null);
 
-  const causes =
-    result.causes && result.causes.length > 0
-      ? result.causes
-      : [result.problem];
+  const t = (key: string) => translations[key]?.[cardLang] || translations[key]?.["english"] || key;
+
+  // Active display data — translated if available, else original English
+  const display = cardLang === "tanglish" && translated ? translated : null;
+
+  const toggleCardLang = async () => {
+    if (cardLang === "english") {
+      // Switch to Tanglish
+      setCardLang("tanglish");
+      if (translationMemCache.current) {
+        // Already fetched this session — use memory cache instantly
+        setTranslated(translationMemCache.current);
+        return;
+      }
+      // Fetch from Firestore cache or Gemini
+      setIsTranslating(true);
+      try {
+        const data = await translateCardWithAI(brandId, result, "tanglish");
+        if (data) {
+          translationMemCache.current = data;
+          setTranslated(data);
+        }
+      } finally {
+        setIsTranslating(false);
+      }
+    } else {
+      // Switch back to English — instant, no fetch
+      setCardLang("english");
+    }
+  };
 
   return (
     <div
@@ -36,38 +75,62 @@ export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { resu
               {result.code}
             </div>
             <h3 className="mt-2 text-lg font-bold leading-tight text-foreground">
-              {translateDTCTitle(result.title, language)}
+              {display ? display.title : result.title}
             </h3>
             {result.category && (
               <p className="mt-0.5 text-xs text-muted-foreground">{result.category}</p>
             )}
           </div>
-          <span
-            className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${sevPill[result.severity]}`}
-          >
-            {t(result.severity === "critical" ? "high" : result.severity === "warning" ? "medium" : "low")} {t("severityLabel")}
-          </span>
+
+          {/* Severity + Translate toggle stacked */}
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <span className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${sevPill[result.severity]}`}>
+              {t(result.severity === "critical" ? "high" : result.severity === "warning" ? "medium" : "low")} {t("severityLabel")}
+            </span>
+
+            {/* Translate toggle pill */}
+            <button
+              onClick={toggleCardLang}
+              disabled={isTranslating}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background/60 px-2.5 py-1 text-[10px] font-bold tracking-wide transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary disabled:opacity-60"
+              title="Toggle language"
+            >
+              {isTranslating ? (
+                <Loader2 className="h-3 w-3 animate-spin text-primary" />
+              ) : (
+                <Languages className="h-3 w-3" />
+              )}
+              <span className={cardLang === "english" ? "text-foreground" : "text-muted-foreground"}>EN</span>
+              <span className="text-border">|</span>
+              <span className={cardLang === "tanglish" ? "text-primary font-extrabold" : "text-muted-foreground"}>
+                {isTranslating ? "..." : "Tanglish"}
+              </span>
+            </button>
+          </div>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-foreground/85">{result.problem}</p>
+
+        <p className="mt-3 text-sm leading-relaxed text-foreground/85">
+          {display ? display.problem : result.problem}
+        </p>
       </div>
 
       {/* 2x2 quadrant grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2">
         <Quadrant icon={CheckCircle2} title={t("affectedPart")} accent="text-primary" border="border-b sm:border-r">
           <p className="text-sm font-bold text-foreground">
-            {result.affectedPart ?? result.title.split(" Fault")[0].split(" Circuit")[0]}
+            {display ? display.affectedPart : (result.affectedPart ?? result.title.split(" Fault")[0].split(" Circuit")[0])}
           </p>
         </Quadrant>
         <Quadrant icon={Activity} title={t("symptoms")} accent="text-critical" border="border-b">
-          <BulletList items={result.symptoms} />
+          <BulletList items={display ? display.symptoms : result.symptoms} />
         </Quadrant>
         <Quadrant icon={MapPin} title={t("location")} accent="text-warning" border="sm:border-r">
           <p className="text-sm text-foreground/90">
-            {result.location ?? t("defaultLocation")}
+            {display ? display.location : (result.location ?? t("defaultLocation"))}
           </p>
         </Quadrant>
         <Quadrant icon={Wrench} title={t("actions")} accent="text-success" border="">
-          <BulletList items={result.actions} />
+          <BulletList items={display ? display.actions : result.actions} />
         </Quadrant>
       </div>
 
@@ -80,30 +143,41 @@ export function ResultCard({ result, brandName, onEnhance, isEnhancing }: { resu
             style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
           >
             <Sparkles className="h-4 w-4" />
-            {language === "tamil" ? "AI மூலம் மேலும் விவரங்கள் பெறவும்" : "Enhance Details with AI"}
+            Analyze Details
           </button>
         </div>
       )}
 
       {/* AI Loading Animation */}
-      {isEnhancing && <AILoadingCard language={language} />}
+      {isEnhancing && <AILoadingCard language={cardLang} />}
 
       {/* Dynamic AI Detailed Summary Card */}
       {!isEnhancing && result.explanation && (
-        <div className="border-t border-border bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5 p-6 animate-fade-in">
-          <div className="flex items-center gap-2 mb-4">
-             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="border-t border-border bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5 animate-fade-in">
+          {/* Clickable header — always visible */}
+          <button
+            onClick={() => setIsAIExpanded(prev => !prev)}
+            className="flex w-full items-center justify-between px-6 py-4 transition-colors hover:bg-primary/5"
+          >
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-             </div>
-             <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
-                {language === "tamil" 
-                  ? "AI பகுப்பாய்வு & வழிகாட்டி" 
-                  : language === "tanglish" 
-                  ? "AI Summary & Diagnostics" 
-                  : "Gemini AI Diagnostics & Guide"}
-             </h4>
-          </div>
-          <FormattedText text={result.explanation} />
+              </div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
+                Analyzing · Diagnostic Guide
+              </h4>
+            </div>
+            <ChevronDown
+              className={`h-4 w-4 text-primary transition-transform duration-300 ${isAIExpanded ? "rotate-180" : "rotate-0"}`}
+            />
+          </button>
+
+          {/* Collapsible content */}
+          {isAIExpanded && (
+            <div className="px-6 pb-6 animate-fade-in">
+              <FormattedText text={result.explanation} />
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -137,7 +211,7 @@ function Quadrant({
 }
 
 const AI_STEPS = [
-  { en: "Connecting to Gemini AI...", ta: "Gemini AI உடன் இணைக்கிறது...", tl: "Gemini AI-ku connect aguthu..." },
+  { en: "Connecting to analysis engine...", ta: "பகுப்பாய்வு தொடங்குகிறது...", tl: "Analysis start aguthu..." },
   { en: "Reading diagnostic fault code...", ta: "தொழில்நுட்பக் குறியீடு படிக்கிறது...", tl: "Fault code padikuthu..." },
   { en: "Analyzing fault patterns...", ta: "தவறான முறைகளை ஆய்வு செய்கிறது...", tl: "Fault patterns analyze aguthu..." },
   { en: "Cross-referencing service data...", ta: "சேவை தரவுகளை ஒப்பிடுகிறது...", tl: "Service data cross-check pannuthu..." },
@@ -173,7 +247,7 @@ function AILoadingCard({ language }: { language: string }) {
         </div>
         <div>
           <p className="text-xs font-extrabold uppercase tracking-widest text-primary">
-            Gemini AI · Deep Analysis
+            Analysis · Deep Diagnostic
           </p>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             {label}{dots}
@@ -223,7 +297,7 @@ function AILoadingCard({ language }: { language: string }) {
       {/* AI badge */}
       <div className="mt-5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
         <Cpu className="h-3 w-3" />
-        Powered by Google Gemini 2.5 Flash · Deep Diagnostic Mode
+        Analyzing · Deep Diagnostic Mode
       </div>
     </div>
   );

@@ -1,26 +1,14 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bike, Database, LayoutDashboard, LogOut, Settings, Globe, ChevronDown, Check } from "lucide-react";
+import { Database, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "./AuthProvider";
 import { translations } from "@/lib/translations";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 
 export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, language, setLanguage } = useAuth();
-  const [isLangOpen, setIsLangOpen] = useState(false);
-  const langRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (langRef.current && !langRef.current.contains(event.target as Node)) {
-        setIsLangOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const { user, logout, language } = useAuth();
 
   const handleLogout = () => {
     logout();
@@ -37,12 +25,6 @@ export function Sidebar() {
     { label: t("dashboard"), icon: LayoutDashboard, href: "/" },
     { label: t("activeUsers"), icon: Database, href: "/codes" },
     { label: t("settings"), icon: Settings, href: "/settings" },
-  ];
-
-  const languages: { id: typeof language; label: string }[] = [
-    { id: "english", label: "English" },
-    { id: "tamil", label: "தமிழ் (Tamil)" },
-    { id: "tanglish", label: "Tanglish" },
   ];
 
   return (
@@ -80,45 +62,6 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Language Selector Dropdown In Sidebar */}
-      <div className="px-4 py-3 border-t border-border/30 relative" ref={langRef}>
-        <button
-            onClick={() => setIsLangOpen(!isLangOpen)}
-            className="flex w-full items-center justify-between gap-3 rounded-xl bg-secondary/30 px-4 py-2.5 text-xs font-bold transition-all hover:bg-secondary/50 border border-border/50"
-        >
-            <div className="flex items-center gap-2">
-                <Globe className="h-3.5 w-3.5 text-primary" />
-                <span className="capitalize">{language}</span>
-            </div>
-            <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", isLangOpen && "rotate-180")} />
-        </button>
-
-        {isLangOpen && (
-            <div className="absolute bottom-full left-4 right-4 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-bottom-2 duration-200 z-50">
-                <div className="p-1">
-                    {languages.map((lang) => (
-                        <button
-                            key={lang.id}
-                            onClick={() => {
-                                setLanguage(lang.id);
-                                setIsLangOpen(false);
-                            }}
-                            className={cn(
-                                "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold transition-colors",
-                                language === lang.id 
-                                    ? "bg-primary/10 text-primary" 
-                                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                            )}
-                        >
-                            {lang.label}
-                            {language === lang.id && <Check className="h-3 w-3" />}
-                        </button>
-                    ))}
-                </div>
-            </div>
-        )}
-      </div>
-
       <div className="p-4 border-t border-border/50">
         <div className="group relative flex items-center gap-3 rounded-2xl bg-secondary/40 p-3 transition-all hover:bg-secondary/60">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-foreground/20 text-primary-foreground font-bold text-xs">
@@ -146,20 +89,8 @@ export function Sidebar() {
 export function MobileNav() {
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, logout, language, setLanguage } = useAuth();
-    const [isLangOpen, setIsLangOpen] = useState(false);
+    const { user, logout, language } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const langRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (langRef.current && !langRef.current.contains(event.target as Node)) {
-                setIsLangOpen(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
 
     const handleLogout = () => {
         setIsProfileOpen(false);
@@ -170,12 +101,6 @@ export function MobileNav() {
     const initials = user?.name
         ? user.name.split(" ").map(n => n[0]).join("").toUpperCase()
         : "??";
-
-    const languages: { id: typeof language; label: string }[] = [
-        { id: "english", label: "English" },
-        { id: "tamil", label: "தமிழ் (Tamil)" },
-        { id: "tanglish", label: "Tanglish" },
-    ];
 
     return (
         <>
@@ -225,13 +150,18 @@ export function MobileNav() {
 
             {/* Bottom Nav Bar */}
             <div
-                className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
+                className="fixed bottom-0 left-0 right-0 z-40 sm:hidden"
                 style={{
-                    paddingBottom: "env(safe-area-inset-bottom)",
+                    padding: "0 12px 8px 12px",
+                    paddingBottom: "max(8px, env(safe-area-inset-bottom))",
+                }}
+            >
+              <div className="flex h-16 items-center justify-around rounded-2xl border border-border bg-card/95 backdrop-blur-lg px-2 shadow-sm"
+                style={{
                     transform: "translate3d(0,0,0)",
                     willChange: "transform",
                 }}
-            >
+              >
                 <Link to="/" className={cn(
                     "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
                     location.pathname === "/" ? "text-primary" : "text-muted-foreground"
@@ -245,44 +175,6 @@ export function MobileNav() {
                 )}>
                     <Database className="h-5 w-5" />
                 </Link>
-
-                {/* Language Picker */}
-                <div ref={langRef} className="relative flex flex-col items-center">
-                    <button
-                        onClick={() => setIsLangOpen(!isLangOpen)}
-                        className={cn(
-                            "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
-                            isLangOpen ? "text-primary" : "text-muted-foreground"
-                        )}
-                    >
-                        <Globe className="h-5 w-5" />
-                    </button>
-
-                    {isLangOpen && (
-                        <div className="absolute bottom-full mb-2 w-40 overflow-hidden rounded-xl border border-border bg-popover shadow-2xl animate-in slide-in-from-bottom-2 duration-200 z-50">
-                            <div className="p-1">
-                                {languages.map((lang) => (
-                                    <button
-                                        key={lang.id}
-                                        onClick={() => {
-                                            setLanguage(lang.id);
-                                            setIsLangOpen(false);
-                                        }}
-                                        className={cn(
-                                            "flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-bold transition-colors",
-                                            language === lang.id
-                                                ? "bg-primary/10 text-primary"
-                                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-                                        )}
-                                    >
-                                        {lang.label}
-                                        {language === lang.id && <Check className="h-3 w-3" />}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
 
                 <Link to="/settings" className={cn(
                     "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
@@ -307,6 +199,7 @@ export function MobileNav() {
                         {initials}
                     </div>
                 </button>
+              </div>
             </div>
         </>
     );
