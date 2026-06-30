@@ -182,7 +182,28 @@ function RootComponent() {
             className={cn("flex-1 min-w-0 overflow-y-auto", hideNav ? "pb-0" : "pb-20 sm:pb-0")}
             style={{ height: "100dvh" }}
           >
-            <Outlet />
+            {/* Mobile Top Bar — only on small screens, hidden on sm+ (desktop has sidebar) */}
+            {!hideNav && (
+              <header className="fixed top-0 left-0 right-0 z-40 sm:hidden"
+                style={{ padding: "8px 12px 0 12px" }}
+              >
+                <div className="flex h-14 items-center gap-3 rounded-2xl border border-border bg-card/95 backdrop-blur-lg px-4 shadow-sm">
+                  <img
+                    src="/logo.png"
+                    alt="AK Arun Wiring Logo"
+                    className="h-8 w-8 rounded-full object-cover shadow-md shadow-primary/20 border border-primary/20 shrink-0"
+                  />
+                  <div className="flex flex-col leading-none">
+                    <span className="text-[13px] font-black tracking-wider uppercase text-foreground">AK Arun Wiring</span>
+                    <span className="text-[10px] font-bold tracking-widest text-primary uppercase mt-0.5">OBD-Decoder</span>
+                  </div>
+                </div>
+              </header>
+            )}
+            {/* Push content below top bar on mobile */}
+            <div className={cn(!hideNav && "pt-16 sm:pt-0")}>
+              <Outlet />
+            </div>
           </main>
           {!hideNav && <MobileNav />}
         </div>

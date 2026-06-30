@@ -150,13 +150,18 @@ export function MobileNav() {
 
             {/* Bottom Nav Bar */}
             <div
-                className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t border-border bg-card/95 backdrop-blur-lg px-2 sm:hidden"
+                className="fixed bottom-0 left-0 right-0 z-40 sm:hidden"
                 style={{
-                    paddingBottom: "env(safe-area-inset-bottom)",
+                    padding: "0 12px 8px 12px",
+                    paddingBottom: "max(8px, env(safe-area-inset-bottom))",
+                }}
+            >
+              <div className="flex h-16 items-center justify-around rounded-2xl border border-border bg-card/95 backdrop-blur-lg px-2 shadow-sm"
+                style={{
                     transform: "translate3d(0,0,0)",
                     willChange: "transform",
                 }}
-            >
+              >
                 <Link to="/" className={cn(
                     "flex flex-col items-center gap-1 text-[10px] font-medium transition-colors px-3 py-1",
                     location.pathname === "/" ? "text-primary" : "text-muted-foreground"
@@ -194,6 +199,7 @@ export function MobileNav() {
                         {initials}
                     </div>
                 </button>
+              </div>
             </div>
         </>
     );
