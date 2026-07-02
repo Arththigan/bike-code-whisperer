@@ -1,10 +1,10 @@
 import type { OBDCode, Severity } from "@/data/obdCodes";
 import { SEVERITY_LABEL } from "@/data/obdCodes";
-import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu, Languages, ChevronDown } from "lucide-react";
+import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2, Cpu, Languages, ChevronDown, RefreshCw } from "lucide-react";
 import { useAuth } from "./AuthProvider";
 import { translations, translateDTCTitle } from "@/lib/translations";
 import { useEffect, useRef, useState } from "react";
-import { translateCardWithAI } from "@/lib/gemini";
+import { translateCardWithAI, generateDiagnosticGuide } from "@/lib/gemini";
 import type { OBDTranslationCache } from "@/lib/firebaseDb";
 
 const sevPill: Record<Severity, string> = {
@@ -13,18 +13,24 @@ const sevPill: Record<Severity, string> = {
   info: "bg-info/15 text-info border border-info/30",
 };
 
-export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing }: {
+export function ResultCard({ result, brandName, brandId }: {
   result: OBDCode;
   brandName: string;
   brandId: string;
-  onEnhance?: () => void;
-  isEnhancing?: boolean;
 }) {
   const { language } = useAuth();
   const [cardLang, setCardLang] = useState<"english" | "tanglish">("english");
   const [translated, setTranslated] = useState<OBDTranslationCache | null>(null);
   const [isTranslating, setIsTranslating] = useState(false);
-  const [isAIExpanded, setIsAIExpanded] = useState(true);
+  const [isAIExpanded, setIsAIExpanded] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("ai-section-expanded");
+      return saved === null ? true : saved === "true";
+    } catch { return true; }
+  });
+  // Guide state — local only, never persisted
+  const [guide, setGuide] = useState<string | null>(null);
+  const [isLoadingGuide, setIsLoadingGuide] = useState(false);
   // Cache in memory so toggling back doesn't re-fetch
   const translationMemCache = useRef<OBDTranslationCache | null>(null);
 
@@ -56,6 +62,18 @@ export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing 
     } else {
       // Switch back to English — instant, no fetch
       setCardLang("english");
+    }
+  };
+
+  const fetchGuide = async () => {
+    setIsLoadingGuide(true);
+    setIsAIExpanded(true);
+    try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
+    try {
+      const text = await generateDiagnosticGuide(brandName, result.code, result.title, result.problem);
+      setGuide(text);
+    } finally {
+      setIsLoadingGuide(false);
     }
   };
 
@@ -134,11 +152,11 @@ export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing 
         </Quadrant>
       </div>
 
-      {/* Action Bar for AI Enhancement */}
-      {onEnhance && !isEnhancing && !result.explanation && (
+      {/* Analyze Details button — shown when no guide loaded yet */}
+      {!isLoadingGuide && !guide && (
         <div className="border-t border-border bg-card p-4 flex justify-end">
           <button
-            onClick={onEnhance}
+            onClick={fetchGuide}
             className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
             style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
           >
@@ -148,34 +166,48 @@ export function ResultCard({ result, brandName, brandId, onEnhance, isEnhancing 
         </div>
       )}
 
-      {/* AI Loading Animation */}
-      {isEnhancing && <AILoadingCard language={cardLang} />}
+      {/* Loading Animation */}
+      {isLoadingGuide && <AILoadingCard language="tanglish" />}
 
-      {/* Dynamic AI Detailed Summary Card */}
-      {!isEnhancing && result.explanation && (
+      {/* Diagnostic Guide Section */}
+      {!isLoadingGuide && guide && (
         <div className="border-t border-border bg-gradient-to-r from-primary/5 via-secondary/5 to-primary/5 animate-fade-in">
-          {/* Clickable header — always visible */}
-          <button
-            onClick={() => setIsAIExpanded(prev => !prev)}
-            className="flex w-full items-center justify-between px-6 py-4 transition-colors hover:bg-primary/5"
-          >
-            <div className="flex items-center gap-2">
+          {/* Clickable header with collapse + refresh */}
+          <div className="flex w-full items-center justify-between px-6 py-4">
+            <button
+              onClick={() => {
+                const next = !isAIExpanded;
+                setIsAIExpanded(next);
+                try { localStorage.setItem("ai-section-expanded", String(next)); } catch {}
+              }}
+              className="flex items-center gap-2 flex-1 transition-colors hover:opacity-80"
+            >
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Sparkles className="h-4 w-4 text-primary animate-pulse" />
               </div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-primary">
                 Analyzing · Diagnostic Guide
               </h4>
-            </div>
-            <ChevronDown
-              className={`h-4 w-4 text-primary transition-transform duration-300 ${isAIExpanded ? "rotate-180" : "rotate-0"}`}
-            />
-          </button>
+              <ChevronDown
+                className={`ml-1 h-4 w-4 text-primary transition-transform duration-300 ${isAIExpanded ? "rotate-180" : "rotate-0"}`}
+              />
+            </button>
+            {/* Refresh button */}
+            <button
+              onClick={fetchGuide}
+              disabled={isLoadingGuide}
+              className="ml-3 flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground transition-all hover:border-primary/40 hover:text-primary disabled:opacity-50"
+              title="Get a fresh analysis"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+          </div>
 
           {/* Collapsible content */}
           {isAIExpanded && (
             <div className="px-6 pb-6 animate-fade-in">
-              <FormattedText text={result.explanation} />
+              <FormattedText text={guide} />
             </div>
           )}
         </div>

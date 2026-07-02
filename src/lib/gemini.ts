@@ -151,3 +151,50 @@ export async function translateCardWithAI(
     return null;
   }
 }
+
+// ─── Diagnostic Guide ─────────────────────────────────────────────────────────
+// Always fresh Gemini call — never cached, always Tanglish.
+// Called directly from ResultCard when user clicks "Analyze Details" or "Refresh".
+
+export async function generateDiagnosticGuide(
+  brand: string,
+  code: string,
+  title: string,
+  problem: string
+): Promise<string | null> {
+  if (!API_KEY) return null;
+
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+  const prompt = `
+You are an expert motorcycle workshop mechanic. A mechanic has scanned a fault code and needs a detailed diagnostic guide.
+
+Bike Brand: ${brand}
+Fault Code: ${code}
+Fault Title: ${title}
+Issue: ${problem}
+
+Write a detailed diagnostic and repair guide in TANGLISH (Tamil words written in English letters, mixed with English technical terms).
+
+Example Tanglish style:
+"Indha code varudhu endha sensor-la signal problem irukkum. First-a wiring-ai check pannunga, aprom multimeter use panni voltage measure pannunga."
+
+Include:
+1. Enna problem — short explanation in Tanglish
+2. Enna cause — possible reasons in Tanglish  
+3. Epdi diagnose pannuvathu — step by step in Tanglish
+4. Epdi fix pannuvathu — repair steps in Tanglish
+5. Extra tips — mechanic tips in Tanglish
+
+Use clear headings with **bold**. Keep it practical for a workshop mechanic.
+Write ONLY in Tanglish. Do not use Tamil script. Do not use pure English paragraphs.
+  `.trim();
+
+  try {
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  } catch (e) {
+    console.error("generateDiagnosticGuide error:", e);
+    return null;
+  }
+}

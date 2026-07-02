@@ -43,7 +43,6 @@ function Index() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [pinned, setPinned] = useState<PinnedItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isEnhancing, setIsEnhancing] = useState(false);
   const { language } = useAuth();
 
   useEffect(() => {
@@ -70,17 +69,13 @@ function Index() {
     [brandId],
   );
 
-  const runAnalysis = async (q: string, bId: string, forceAI: boolean = false) => {
-    if (forceAI) {
-      setIsEnhancing(true);
-    } else {
-      setIsAnalyzing(true);
-      setAnalysis(null);
-    }
-    
-    // 1. Check Firebase first (custom/imported codes have priority)
+  const runAnalysis = async (q: string, bId: string) => {
+    setIsAnalyzing(true);
+    setAnalysis(null);
+
+    // 1. Check Firebase first
     let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q, language);
-    
+
     // 2. Fallback to built-in local static codes
     if (!dbResult) {
       dbResult = lookupCode(bId, q);
@@ -88,25 +83,14 @@ function Index() {
 
     let result = dbResult;
 
-    // 3. Fallback to AI generation if still not found, or if we need translation/explanation
-    // Call AI if:
-    // - No database result was found
-    // - OR the database result doesn't have our detailed AI 'explanation' field
-    // - OR the database result language is different from the target language
-    // - OR the user explicitly requested forced AI enhancement
-    const dbLang = (dbResult as any)?.language || "english";
-    const needsAI = forceAI || !dbResult || !dbResult.explanation || dbLang !== language;
-
-    if (needsAI) {
+    // 3. Call AI if no result found — never call AI just for explanation (guide handles that)
+    if (!dbResult) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
       try {
-        const aiResult = await analyzeCodeWithAI(bName, bId, q, dbResult, language);
-        if (aiResult) {
-          result = aiResult;
-          if (forceAI) toast.success("Analysis Complete!");
-        }
+        const aiResult = await analyzeCodeWithAI(bName, bId, q, null, language);
+        if (aiResult) result = aiResult;
       } catch (err: any) {
-        if (forceAI) toast.error("Analysis Error: " + (err.message || "Failed to analyze"));
+        console.error("Analysis error:", err.message);
       }
     }
 
@@ -122,7 +106,6 @@ function Index() {
     }
     
     setIsAnalyzing(false);
-    setIsEnhancing(false);
     
     setTimeout(() => {
       document.getElementById("result-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -240,8 +223,6 @@ function Index() {
                   result={analysis.result}
                   brandName={BRANDS.find((b) => b.id === analysis.brandId)?.name ?? ""}
                   brandId={analysis.brandId}
-                  onEnhance={() => runAnalysis(analysis.query, analysis.brandId, true)}
-                  isEnhancing={isEnhancing}
                 />
               ) : (
                 <NoResultCard query={analysis.query} brandName={brandName || "this brand"} />
