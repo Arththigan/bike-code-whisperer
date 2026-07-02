@@ -153,8 +153,21 @@ export async function translateCardWithAI(
 }
 
 // ─── Diagnostic Guide ─────────────────────────────────────────────────────────
-// Always fresh Gemini call — never cached, always Tanglish.
-// Called directly from ResultCard when user clicks "Analyze Details" or "Refresh".
+// Model waterfall fallback chain — tries each model silently on 429/error.
+// Never cached, always fresh Tanglish. Mechanic never sees a failure.
+
+// Model priority: highest quota first → fallback to next on rate limit
+const GUIDE_MODEL_CHAIN = [
+  "gemini-2.5-flash-lite", // 1,000 RPD free — primary
+  "gemini-2.5-flash",      // 250 RPD free  — fallback 1
+  "gemini-2.5-pro",        // 100 RPD free  — fallback 2
+];
+
+function isRateLimitError(e: unknown): boolean {
+  if (!e) return false;
+  const msg = String((e as any)?.message || e);
+  return msg.includes("429") || msg.includes("quota") || msg.includes("RESOURCE_EXHAUSTED") || msg.includes("Too Many Requests");
+}
 
 export async function generateDiagnosticGuide(
   brand: string,
@@ -164,37 +177,118 @@ export async function generateDiagnosticGuide(
 ): Promise<string | null> {
   if (!API_KEY) return null;
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
   const prompt = `
-You are an expert motorcycle workshop mechanic. A mechanic has scanned a fault code and needs a detailed diagnostic guide.
+You are a SENIOR motorcycle ECU diagnostic engineer with 20+ years of experience. Write a COMPREHENSIVE diagnostic guide for a workshop mechanic.
 
 Bike Brand: ${brand}
 Fault Code: ${code}
 Fault Title: ${title}
-Issue: ${problem}
+Problem: ${problem}
 
-Write a detailed diagnostic and repair guide in TANGLISH (Tamil words written in English letters, mixed with English technical terms).
+Write ENTIRELY in TANGLISH (Tamil words written in English letters, mixed with English technical terms).
+NO Tamil script. NO pure English paragraphs.
 
-Example Tanglish style:
-"Indha code varudhu endha sensor-la signal problem irukkum. First-a wiring-ai check pannunga, aprom multimeter use panni voltage measure pannunga."
+Use EXACTLY this format with these section headers and structure:
 
-Include:
-1. Enna problem — short explanation in Tanglish
-2. Enna cause — possible reasons in Tanglish  
-3. Epdi diagnose pannuvathu — step by step in Tanglish
-4. Epdi fix pannuvathu — repair steps in Tanglish
-5. Extra tips — mechanic tips in Tanglish
+## Enna Problem Irukkunu
 
-Use clear headings with **bold**. Keep it practical for a workshop mechanic.
-Write ONLY in Tanglish. Do not use Tamil script. Do not use pure English paragraphs.
+[3-4 sentences explaining what this code means technically, what the ECM detects, why it triggers. Be specific about the circuit/sensor involved.]
+
+## Possible Causes
+
+- **[Cause 1 name]:** [Detailed explanation of this cause in Tanglish]
+- **[Cause 2 name]:** [Detailed explanation]
+- **[Cause 3 name]:** [Detailed explanation]
+- **[Cause 4 name]:** [Detailed explanation]
+- **[Cause 5 name]:** [Detailed explanation]
+- **[Cause 6 name]:** [Detailed explanation]
+
+## Symptoms — Bike-la Enna Therium
+
+- [Symptom 1 — what mechanic will observe]
+- [Symptom 2]
+- [Symptom 3]
+- [Symptom 4]
+- [Symptom 5]
+
+## Tools Vennum
+
+- **Multimeter:** [What to measure with it for this code]
+- **OBD Scanner:** [What to check]
+- **[Other tool if needed]:** [Purpose]
+
+## Step-by-Step Diagnosis
+
+**Step 1: Visual Inspection**
+[Detailed steps for visual check — what exactly to look for]
+
+**Step 2: Connector Check**
+[How to check connectors, what to look for, cleaning procedure]
+
+**Step 3: Voltage/Resistance Test**
+[Exact multimeter readings — specify exact values like "5V reference vennum", "0.5-2 ohm resistance irukanum"]
+
+**Step 4: Sensor Test**
+[How to test the specific sensor/component for this code]
+
+**Step 5: Wiring Continuity**
+[How to test wiring harness for this code]
+
+**Step 6: ECM Signal Test**
+[How to verify ECM is sending/receiving correct signal]
+
+[Add more steps as needed — minimum 8 steps total]
+
+## Repair Procedure
+
+**Option 1: [Most common fix]**
+[Detailed repair steps]
+
+**Option 2: [Second most common fix]**
+[Detailed repair steps]
+
+**Option 3: [Wiring repair if applicable]**
+[Detailed repair steps]
+
+## Code Clear Panna
+
+[Steps to clear the DTC and verify the fix worked]
+
+## Pro Tips — ${brand} Specific
+
+- [Tip 1 specific to this brand/code combination]
+- [Tip 2]
+- [Tip 3]
+
+Write every section FULLY with maximum detail. Each step must have enough detail for a mechanic to follow without any other reference.
   `.trim();
 
-  try {
-    const result = await model.generateContent(prompt);
-    return result.response.text();
-  } catch (e) {
-    console.error("generateDiagnosticGuide error:", e);
-    return null;
+  for (const modelName of GUIDE_MODEL_CHAIN) {
+    try {
+      console.log(`[DiagnosticGuide] Trying model: ${modelName}`);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens: 4096,
+          temperature: 0.7,
+        },
+      });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      console.log(`[DiagnosticGuide] Success with: ${modelName}`);
+      return text;
+    } catch (e) {
+      if (isRateLimitError(e)) {
+        console.warn(`[DiagnosticGuide] ${modelName} rate limited — trying next model...`);
+        continue; // silently try next model
+      }
+      // Non-rate-limit error (network, auth, etc.) — still try next model
+      console.warn(`[DiagnosticGuide] ${modelName} failed (${(e as any)?.message}) — trying next model...`);
+      continue;
+    }
   }
+
+  // All models exhausted — return a helpful static fallback so mechanic is not stuck
+  console.error("[DiagnosticGuide] All models exhausted — returning static fallback");
+  return `**${code} - ${title}**\n\nIndha fault code ${brand} bike-la ${title.toLowerCase()} indicate panudhu.\n\n**Basic checks pannunga:**\n- Wiring connections-ai inspect pannunga\n- Connector corrosion check pannunga\n- Battery voltage verify pannunga (12.5V+ irukanum)\n- Related sensor resistance multimeter-la measure pannunga\n\n**Service manual-ai refer pannunga** — ${brand} specific procedures-ku manufacturer documentation paarunga.\n\nThoda detailed analysis-ku sila minutes wait panni retry pannunga.`;
 }
