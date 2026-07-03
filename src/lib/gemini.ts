@@ -44,7 +44,7 @@ export async function analyzeCodeWithAI(
       symptoms: data.symptoms || ["Check engine light (MIL) is ON"],
       actions: data.actions || ["Consult service manual"],
       location: data.location || "Refer to service manual",
-      explanation: data.explanation || undefined,
+      ...(data.explanation && { explanation: data.explanation }),
     };
 
     cacheAICode({ ...obdCode, brandId, language }).catch(() => {});

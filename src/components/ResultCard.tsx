@@ -138,7 +138,7 @@ export function ResultCard({ result, brandName, brandId }: {
       <div className="grid grid-cols-1 sm:grid-cols-2">
         <Quadrant icon={CheckCircle2} title={t("affectedPart")} accent="text-primary" border="border-b sm:border-r">
           <p className="text-sm font-bold text-foreground">
-            {display ? display.affectedPart : (result.affectedPart ?? result.title.split(" Fault")[0].split(" Circuit")[0])}
+            {display ? display.affectedPart : (result.affectedPart ?? (typeof result.title === 'string' ? result.title.split(" Fault")[0].split(" Circuit")[0] : 'Unknown'))}
           </p>
         </Quadrant>
         <Quadrant icon={Activity} title={t("symptoms")} accent="text-critical" border="border-b">
