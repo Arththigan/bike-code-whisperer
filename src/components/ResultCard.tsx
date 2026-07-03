@@ -396,9 +396,16 @@ export function NoResultCard({ query, brandName }: { query: string; brandName: s
   const { language } = useAuth();
   const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
 
-  const description = t("noDataDescription")
-    .replace("{code}", query)
-    .replace("{brand}", brandName);
+  // Detect if query looks like an invalid code format
+  const cleaned = query.trim().toUpperCase();
+  const isValidDTC = /^[PCBU][0-9]{4}$/.test(cleaned);
+  const isValidBlink = /^[0-9]{1,3}$/.test(cleaned);
+  const isValidManuf = /^[A-Z][0-9A-Z]{2,7}$/.test(cleaned);
+  const isInvalidFormat = !isValidDTC && !isValidBlink && !isValidManuf;
+
+  const description = isInvalidFormat
+    ? `"${query}" is not a valid DTC code format. Valid formats: P0351, C1234, B0001, U0100, or blink codes like 11, 23.`
+    : t("noDataDescription").replace("{code}", query).replace("{brand}", brandName);
 
   return (
     <div
@@ -408,20 +415,37 @@ export function NoResultCard({ query, brandName }: { query: string; brandName: s
       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-secondary">
         <FileQuestion className="h-7 w-7 text-muted-foreground" />
       </div>
-      <h3 className="text-lg font-bold">{t("noDataFound")}</h3>
+      <h3 className="text-lg font-bold">
+        {isInvalidFormat ? "Invalid Code Format" : t("noDataFound")}
+      </h3>
       <p className="mt-1 text-sm text-muted-foreground">
         {description}
       </p>
-      <div className="mx-auto mt-4 max-w-sm rounded-xl border border-border/60 bg-background/40 p-4 text-left">
-        <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-warning">
-          <Wrench className="h-4 w-4" /> {t("suggestedNextStep")}
+      {!isInvalidFormat && (
+        <div className="mx-auto mt-4 max-w-sm rounded-xl border border-border/60 bg-background/40 p-4 text-left">
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-warning">
+            <Wrench className="h-4 w-4" /> {t("suggestedNextStep")}
+          </div>
+          <ul className="space-y-1.5 text-sm text-foreground/90">
+            <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction1")}</li>
+            <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction2")}</li>
+            <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction3")}</li>
+          </ul>
         </div>
-        <ul className="space-y-1.5 text-sm text-foreground/90">
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction1")}</li>
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction2")}</li>
-          <li className="flex gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />{t("suggestedAction3")}</li>
-        </ul>
-      </div>
+      )}
+      {isInvalidFormat && (
+        <div className="mx-auto mt-4 max-w-sm rounded-xl border border-border/60 bg-background/40 p-4 text-left">
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4" /> Valid Code Examples
+          </div>
+          <ul className="space-y-1 text-sm text-foreground/80 font-mono">
+            <li>P0351 — Standard OBD2 fault code</li>
+            <li>C1234 — Chassis code</li>
+            <li>11, 23 — Blink / flash codes</li>
+            <li>FI01 — Manufacturer specific</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

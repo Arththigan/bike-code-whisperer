@@ -73,21 +73,39 @@ function Index() {
     setIsAnalyzing(true);
     setAnalysis(null);
 
+    // Validate DTC code format before doing anything
+    // Valid formats: P0123, C1234, B0001, U0100, or numeric blink codes like 11, 23 etc.
+    const cleaned = q.trim().toUpperCase();
+    const isValidDTC = /^[PCBU][0-9]{4}$/.test(cleaned);       // Standard OBD2: P0351, C1234
+    const isValidBlink = /^[0-9]{1,3}$/.test(cleaned);          // Blink codes: 11, 23, 111
+    const isValidManuf = /^[A-Z][0-9A-Z]{2,7}$/.test(cleaned);  // Manufacturer: ER01, FI01
+
+    if (!isValidDTC && !isValidBlink && !isValidManuf) {
+      // Invalid code — skip AI, show no result immediately
+      setAnalysis({ query: q, brandId: bId, result: null });
+      saveSession({ query: q, brandId: bId, result: null });
+      setIsAnalyzing(false);
+      setTimeout(() => {
+        document.getElementById("result-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 50);
+      return;
+    }
+
     // 1. Check Firebase first
-    let dbResult: OBDCode | null = await lookupFirebaseCode(bId, q, language);
+    let dbResult: OBDCode | null = await lookupFirebaseCode(bId, cleaned, language);
 
     // 2. Fallback to built-in local static codes
     if (!dbResult) {
-      dbResult = lookupCode(bId, q);
+      dbResult = lookupCode(bId, cleaned);
     }
 
     let result = dbResult;
 
-    // 3. Call AI if no result found — never call AI just for explanation (guide handles that)
-    if (!dbResult) {
+    // 3. Call AI only for valid codes not found in DB
+    if (!dbResult && isValidDTC) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
       try {
-        const aiResult = await analyzeCodeWithAI(bName, bId, q, null, language);
+        const aiResult = await analyzeCodeWithAI(bName, bId, cleaned, null, language);
         if (aiResult) result = aiResult;
       } catch (err: any) {
         console.error("Analysis error:", err.message);
