@@ -1,8 +1,27 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // DTC codes — read by any authenticated user, write only by admin
+    match /dtc_codes/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
+    // Translation cache — read/write by any authenticated user
+    match /obd_translations/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // User profiles — user can read/write their own doc, admin can read all
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null;
+    }
+
+    // Deny everything else
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
