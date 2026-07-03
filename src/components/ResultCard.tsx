@@ -351,6 +351,7 @@ function BulletList({ items }: { items: string[] }) {
 }
 
 function parseBold(text: string) {
+  if (typeof text !== 'string') text = String(text || '');
   const parts = text.split(/\*\*(.*?)\*\*/g);
   return (
     <>
@@ -365,6 +366,7 @@ function parseBold(text: string) {
 }
 
 function FormattedText({ text }: { text: string }) {
+  if (typeof text !== 'string') text = String(text || '');
   const lines = text.split('\n');
   return (
     <div className="space-y-2.5 text-sm leading-relaxed text-foreground/90 font-medium">
