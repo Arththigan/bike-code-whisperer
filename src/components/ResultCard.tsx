@@ -13,6 +13,12 @@ const sevPill: Record<Severity, string> = {
   info: "bg-info/15 text-info border border-info/30",
 };
 
+// ─── Module-level guide cache ─────────────────────────────────────────────────
+// Lives outside the component — survives re-mounts and code switches.
+// key: `${brandId}_${code}` → guide text
+// Cleared only on full page reload.
+const SESSION_GUIDE_CACHE = new Map<string, string>();
+
 export function ResultCard({ result, brandName, brandId }: {
   result: OBDCode;
   brandName: string;
@@ -33,6 +39,21 @@ export function ResultCard({ result, brandName, brandId }: {
   const [isLoadingGuide, setIsLoadingGuide] = useState(false);
   // Cache in memory so toggling back doesn't re-fetch
   const translationMemCache = useRef<OBDTranslationCache | null>(null);
+
+  // When code changes — restore from session cache if available, else reset
+  useEffect(() => {
+    const cacheKey = `${brandId}_${result.code}`;
+    const cached = SESSION_GUIDE_CACHE.get(cacheKey);
+    if (cached) {
+      setGuide(cached);
+    } else {
+      setGuide(null);
+    }
+    setIsLoadingGuide(false);
+    setTranslated(null);
+    setCardLang("english");
+    translationMemCache.current = null;
+  }, [result.code, brandId]);
 
   const t = (key: string) => translations[key]?.[cardLang] || translations[key]?.["english"] || key;
 
@@ -66,12 +87,25 @@ export function ResultCard({ result, brandName, brandId }: {
   };
 
   const fetchGuide = async (forceRefresh = false) => {
+    const cacheKey = `${brandId}_${result.code}`;
+
+    // If already in session cache and not forcing refresh — show instantly (0 AI/Firebase calls)
+    if (!forceRefresh && SESSION_GUIDE_CACHE.has(cacheKey)) {
+      setGuide(SESSION_GUIDE_CACHE.get(cacheKey)!);
+      return;
+    }
+
     setIsLoadingGuide(true);
     setIsAIExpanded(true);
     try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
     try {
       const text = await generateDiagnosticGuide(brandName, brandId, result.code, result.title, result.problem, forceRefresh);
-      setGuide(text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`);
+      const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
+      // Save to session cache only on first-time fetch (not forceRefresh — original stays intact)
+      if (!forceRefresh) {
+        SESSION_GUIDE_CACHE.set(cacheKey, content);
+      }
+      setGuide(content);
     } catch {
       setGuide(`**${result.code} - ${result.title}**\n\nIndha moment-la analysis available illai. Sila minutes wait panni retry pannunga.`);
     } finally {
@@ -159,7 +193,7 @@ export function ResultCard({ result, brandName, brandId }: {
         <div className="border-t border-border bg-card p-4 flex justify-end">
           <button
             onClick={fetchGuide}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
+            className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-extrabold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
             style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
           >
             <Sparkles className="h-4 w-4" />

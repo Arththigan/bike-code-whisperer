@@ -218,7 +218,7 @@ export const generateGuideViaServer = createServerFn({ method: "POST" })
     const guide = await runServerAI("guide", async (genAI, modelName) => {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
+        generationConfig: { maxOutputTokens: 8192, temperature: 1.0 },
       });
       const result = await model.generateContent(prompt);
       return result.response.text();

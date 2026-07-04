@@ -195,7 +195,7 @@ export async function generateDiagnosticGuide(
     run: async (genAI, modelName) => {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
+        generationConfig: { maxOutputTokens: 8192, temperature: 1.0 },
       });
       const result = await model.generateContent(prompt);
       return result.response.text();
@@ -204,10 +204,13 @@ export async function generateDiagnosticGuide(
 
   if (!guide) return buildStaticFallback(brand, code, title);
 
-  // 3. Save to Firebase cache (fire-and-forget)
-  saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
-    console.warn("[generateDiagnosticGuide] Guide cache save failed:", (e as any)?.message)
-  );
+  // 3. Save to Firebase cache only on first-time generation (not on forceRefresh)
+  // forceRefresh = user wants a new variation — don't overwrite the permanent cache
+  if (!forceRefresh) {
+    saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
+      console.warn("[generateDiagnosticGuide] Guide cache save failed:", (e as any)?.message)
+    );
+  }
 
   return guide;
 }
