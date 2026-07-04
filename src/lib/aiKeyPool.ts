@@ -76,6 +76,12 @@ export function getKeysForFeature(feature: AIFeature): string[] {
 /** Check if error is a rate-limit / auth / quota / server error worth retrying */
 export function isRateLimitOrAuthError(e: unknown): boolean {
   const msg = String((e as any)?.message || e);
+  const status = (e as any)?.status ?? (e as any)?.statusCode ?? (e as any)?.code ?? 0;
+
+  // Check HTTP status code directly (GoogleGenerativeAI throws with .status)
+  if ([429, 403, 500, 502, 503, 504].includes(Number(status))) return true;
+
+  // Check error message string
   return (
     msg.includes("429") ||
     msg.includes("403") ||
@@ -87,8 +93,11 @@ export function isRateLimitOrAuthError(e: unknown): boolean {
     msg.includes("Too Many Requests") ||
     msg.includes("Service Unavailable") ||
     msg.includes("overloaded") ||
+    msg.includes("The model is overloaded") ||
     msg.includes("leaked") ||
-    msg.includes("Forbidden")
+    msg.includes("Forbidden") ||
+    msg.includes("UNAVAILABLE") ||
+    msg.includes("Internal Server Error")
   );
 }
 
@@ -100,7 +109,8 @@ export function isRateLimitOrAuthError(e: unknown): boolean {
 const MODEL_CHAINS: Record<AIFeature, string[]> = {
   analysis: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
   translation: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-  guide: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
+  // Guide starts with flash (not flash-lite) — guide is long prompt, flash-lite often 503s
+  guide: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
 };
 
 export interface RunWithPoolOptions {
@@ -140,11 +150,12 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
         return result;
       } catch (e) {
         if (isRateLimitOrAuthError(e)) {
-          console.warn(`[aiKeyPool:${feature}] 429/quota on model=${modelName} — trying next key/model`);
+          const status = (e as any)?.status ?? (e as any)?.statusCode ?? "?";
+          console.warn(`[aiKeyPool:${feature}] ${status} on model=${modelName} — trying next key/model`);
           continue;
         }
-        // Non-rate-limit error (bad response, parse error, etc.) — try next key anyway
-        console.warn(`[aiKeyPool:${feature}] error on model=${modelName}:`, (e as any)?.message);
+        // Non-rate-limit error — log and try next key anyway
+        console.warn(`[aiKeyPool:${feature}] error on model=${modelName}:`, (e as any)?.status, (e as any)?.message);
         continue;
       }
     }

@@ -40,7 +40,8 @@ function getServerKeys(feature: ServerFeature): string[] {
 const SERVER_MODEL_CHAINS: Record<ServerFeature, string[]> = {
   analysis: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
   translation: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-  guide: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
+  // Guide starts with flash — flash-lite often 503s on long prompts
+  guide: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
 };
 
 /** Run a server-side AI call with key-pool × model-waterfall fallback */
@@ -306,7 +307,7 @@ function buildGuidePrompt(brand: string, code: string, title: string, problem: s
   const variation = clientVariation || variations[Math.floor(Math.random() * variations.length)];
 
   return `
-You are a SENIOR motorcycle ECU diagnostic engineer with 20+ years of experience. Write a COMPREHENSIVE diagnostic guide for a workshop mechanic.
+You are a SENIOR motorcycle ECU diagnostic engineer. Write a TECHNICAL diagnostic guide for a workshop mechanic.
 
 Bike Brand: ${brand}
 Fault Code: ${code}
@@ -316,6 +317,14 @@ Variation Focus: ${variation}
 
 Write ENTIRELY in TANGLISH (Tamil words written in English letters, mixed with English technical terms).
 NO Tamil script. NO pure English paragraphs.
+
+STRICT TONE RULES — NEVER violate these:
+- NO greetings like "Nanbargale", "Vanakkam", "Friends", "Vaanga" — start directly with technical content
+- NO phrases like "romba varsham ah", "ungaluku theriyum", "nalla theriyum", "experience irukku"
+- NO storytelling or personal introductions
+- NO filler sentences — every sentence must be a technical instruction or fact
+- Write like a technical manual, NOT like a person talking to an audience
+- First word of every section must be a technical term or action word
 
 Use EXACTLY this format:
 

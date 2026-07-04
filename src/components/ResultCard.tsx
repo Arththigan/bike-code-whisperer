@@ -65,12 +65,12 @@ export function ResultCard({ result, brandName, brandId }: {
     }
   };
 
-  const fetchGuide = async () => {
+  const fetchGuide = async (forceRefresh = false) => {
     setIsLoadingGuide(true);
     setIsAIExpanded(true);
     try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
     try {
-      const text = await generateDiagnosticGuide(brandName, brandId, result.code, result.title, result.problem);
+      const text = await generateDiagnosticGuide(brandName, brandId, result.code, result.title, result.problem, forceRefresh);
       setGuide(text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`);
     } catch {
       setGuide(`**${result.code} - ${result.title}**\n\nIndha moment-la analysis available illai. Sila minutes wait panni retry pannunga.`);
@@ -196,7 +196,7 @@ export function ResultCard({ result, brandName, brandId }: {
             </button>
             {/* Refresh button */}
             <button
-              onClick={fetchGuide}
+              onClick={() => fetchGuide(true)}
               disabled={isLoadingGuide}
               className="ml-3 flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground transition-all hover:border-primary/40 hover:text-primary disabled:opacity-50"
               title="Get a fresh analysis"
