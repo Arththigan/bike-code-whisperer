@@ -1,6 +1,84 @@
 import { createServerFn } from "@tanstack/react-start";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { OBDTranslationCache } from "./firebaseDb";
+import { getOBDGuideCache, saveOBDGuideCache } from "./firebaseDb";
+import { runWithKeyPool, isRateLimitOrAuthError } from "./aiKeyPool";
+
+// ─── Server-side key pool helper ──────────────────────────────────────────────
+// translateServer.ts runs on the server (Node/Cloudflare), so we read keys
+// directly from process.env using the same naming schema as aiKeyPool.ts.
+// We re-implement a minimal version here because import.meta.env is not
+// available in all server runtimes at module-eval time.
+
+type ServerFeature = "analysis" | "translation" | "guide";
+
+function getServerKeys(feature: ServerFeature): string[] {
+  const prefix =
+    feature === "analysis"
+      ? "GEMINI_ANALYSIS_KEY_"
+      : feature === "translation"
+        ? "GEMINI_TRANSLATE_KEY_"
+        : "GEMINI_GUIDE_KEY_";
+
+  const env = (typeof process !== "undefined" && process.env) || ({} as Record<string, string | undefined>);
+
+  const keys: string[] = [];
+  for (let i = 1; i <= 10; i++) {
+    // Try both plain and VITE_ prefixed (env file uses VITE_ prefix)
+    const k = env[`${prefix}${i}`] || env[`VITE_${prefix}${i}`];
+    if (k) keys.push(k);
+  }
+
+  if (keys.length === 0) {
+    const shared = env["GEMINI_API_KEY"] || env["VITE_GEMINI_API_KEY"];
+    if (shared) keys.push(shared);
+  }
+
+  return keys;
+}
+
+const SERVER_MODEL_CHAINS: Record<ServerFeature, string[]> = {
+  analysis: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
+  translation: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+  guide: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
+};
+
+/** Run a server-side AI call with key-pool × model-waterfall fallback */
+async function runServerAI(
+  feature: ServerFeature,
+  run: (genAI: GoogleGenerativeAI, modelName: string) => Promise<string>
+): Promise<string | null> {
+  const keys = getServerKeys(feature);
+  const models = SERVER_MODEL_CHAINS[feature];
+
+  if (keys.length === 0) {
+    console.error(`[ServerAI] No keys for feature: ${feature}`);
+    return null;
+  }
+
+  for (const modelName of models) {
+    for (const key of keys) {
+      try {
+        const genAI = new GoogleGenerativeAI(key);
+        const result = await run(genAI, modelName);
+        console.log(`[ServerAI:${feature}] ✓ model=${modelName}`);
+        return result;
+      } catch (e) {
+        if (isRateLimitOrAuthError(e)) {
+          console.warn(`[ServerAI:${feature}] 429/quota on model=${modelName} — next key/model`);
+          continue;
+        }
+        console.warn(`[ServerAI:${feature}] error on model=${modelName}:`, (e as any)?.message);
+        continue;
+      }
+    }
+  }
+
+  console.warn(`[ServerAI:${feature}] All keys + models exhausted`);
+  return null;
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface TranslateCardInput {
   brandId: string;
@@ -16,21 +94,40 @@ export interface TranslateCardInput {
   targetLang: "tanglish" | "tamil";
 }
 
-// ─── Server Function ──────────────────────────────────────────────────────────
-// Runs on the server — API key never sent to browser.
+export interface GenerateGuideInput {
+  brand: string;
+  brandId: string;
+  code: string;
+  title: string;
+  problem: string;
+  _ts?: number;
+  variation?: string;
+}
+
+export interface AnalyzeCodeInput {
+  brand: string;
+  brandId: string;
+  code: string;
+  language: string;
+  localContext?: {
+    title?: string;
+    problem?: string;
+    symptoms?: string[];
+    actions?: string[];
+    affectedPart?: string;
+    location?: string;
+    severity?: string;
+  } | null;
+}
+
+// ─── Translation Server Function ──────────────────────────────────────────────
+// Uses GEMINI_TRANSLATE_KEY_1..N key pool (falls back to GEMINI_API_KEY).
+// Runs on server — API keys never reach the browser.
 
 export const translateCardViaServer = createServerFn({ method: "POST" })
   .inputValidator((d: TranslateCardInput) => d)
   .handler(async (ctx): Promise<OBDTranslationCache> => {
     const { brandId, code, targetLang } = ctx.data;
-
-    const API_KEY =
-      (typeof process !== "undefined" && (process.env["GEMINI_API_KEY"] || process.env["VITE_GEMINI_API_KEY"])) || "";
-
-    if (!API_KEY) throw new Error("GEMINI_API_KEY not configured on server");
-
-    const genAI = new GoogleGenerativeAI(API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const langInstruction =
       targetLang === "tanglish"
@@ -41,14 +138,18 @@ export const translateCardViaServer = createServerFn({ method: "POST" })
 You are a motorcycle workshop assistant. Translate the following OBD fault code details into ${langInstruction}
 
 Input JSON:
-${JSON.stringify({
-      title: code.title,
-      problem: code.problem,
-      affectedPart: code.affectedPart ?? "",
-      symptoms: code.symptoms,
-      actions: code.actions,
-      location: code.location ?? "",
-    }, null, 2)}
+${JSON.stringify(
+      {
+        title: code.title,
+        problem: code.problem,
+        affectedPart: code.affectedPart ?? "",
+        symptoms: code.symptoms,
+        actions: code.actions,
+        location: code.location ?? "",
+      },
+      null,
+      2
+    )}
 
 Return ONLY a valid JSON object with exactly these keys:
 - "title": translated string
@@ -61,11 +162,16 @@ Return ONLY a valid JSON object with exactly these keys:
 No markdown. No extra text. Only JSON.
     `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const raw = await runServerAI("translation", async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    });
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON in Gemini response");
+    if (!raw) throw new Error("Translation failed — all keys and models exhausted");
+
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON in Gemini translation response");
 
     const d = JSON.parse(jsonMatch[0]);
 
@@ -82,79 +188,109 @@ No markdown. No extra text. Only JSON.
     };
   });
 
-export interface GenerateGuideInput {
-  brand: string;
-  code: string;
-  title: string;
-  problem: string;
-  _ts?: number;
-  variation?: string; // random variation passed from client
-}
-
 // ─── Diagnostic Guide Server Function ────────────────────────────────────────
-// Model waterfall fallback — tries each model silently on 429/403.
-// API key stays server-side. Mechanic never sees a failure.
-
-const GUIDE_MODEL_CHAIN = [
-  "gemini-2.5-flash-lite", // 1,000 RPD — primary
-  "gemini-2.5-flash",      // 250 RPD   — fallback 1
-  "gemini-2.5-pro",        // 100 RPD   — fallback 2
-];
-
-function isRateLimitOrAuthError(e: unknown): boolean {
-  const msg = String((e as any)?.message || e);
-  return (
-    msg.includes("429") ||
-    msg.includes("403") ||
-    msg.includes("quota") ||
-    msg.includes("RESOURCE_EXHAUSTED") ||
-    msg.includes("Too Many Requests") ||
-    msg.includes("leaked") ||
-    msg.includes("Forbidden")
-  );
-}
+// Uses GEMINI_GUIDE_KEY_1..N key pool (falls back to GEMINI_API_KEY).
+// NOW WITH FIREBASE CACHE:
+//   1. Check obd_guides collection first → return instantly if found
+//   2. If not cached → call AI → save to obd_guides → return
+//   Same popular code searched by 100 users = 1 AI call total.
 
 export const generateGuideViaServer = createServerFn({ method: "POST" })
   .inputValidator((d: GenerateGuideInput) => d)
   .handler(async (ctx): Promise<string> => {
-    const { brand, code, title, problem, variation } = ctx.data;
+    const { brand, brandId, code, title, problem, variation } = ctx.data;
 
-    const API_KEY =
-      (typeof process !== "undefined" && (process.env["GEMINI_API_KEY"] || process.env["VITE_GEMINI_API_KEY"])) || "";
+    // 1. Check Firebase guide cache first
+    try {
+      const cached = await getOBDGuideCache(brandId, code);
+      if (cached?.guide) {
+        console.log(`[GuideServer] Cache hit: ${brandId}_${code}`);
+        return cached.guide;
+      }
+    } catch (e) {
+      console.warn("[GuideServer] Cache lookup failed, proceeding to AI:", (e as any)?.message);
+    }
 
-    if (!API_KEY) {
+    // 2. Generate via AI with key-pool × model-waterfall
+    const prompt = buildGuidePrompt(brand, code, title, problem, variation);
+
+    const guide = await runServerAI("guide", async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
+      });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    });
+
+    if (!guide) {
+      console.warn("[GuideServer] All keys + models exhausted — static fallback");
       return buildStaticFallback(brand, code, title);
     }
 
-    const genAI = new GoogleGenerativeAI(API_KEY);
+    // 3. Save to Firebase cache (fire-and-forget)
+    saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
+      console.warn("[GuideServer] Guide cache save failed:", (e as any)?.message)
+    );
 
-    const prompt = buildGuidePrompt(brand, code, title, problem, variation);
-
-    for (const modelName of GUIDE_MODEL_CHAIN) {
-      try {
-        console.log(`[GuideServer] Trying model: ${modelName}`);
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
-        });
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        console.log(`[GuideServer] Success with: ${modelName}`);
-        return text;
-      } catch (e) {
-        if (isRateLimitOrAuthError(e)) {
-          console.warn(`[GuideServer] ${modelName} failed — trying next...`);
-          continue;
-        }
-        console.warn(`[GuideServer] ${modelName} error — trying next...`);
-        continue;
-      }
-    }
-
-    // All models exhausted — static Tanglish fallback (mechanic still gets useful info)
-    console.warn("[GuideServer] All models exhausted — returning static fallback");
-    return buildStaticFallback(brand, code, title);
+    return guide;
   });
+
+// ─── Analyze Code Server Function ────────────────────────────────────────────
+// Uses GEMINI_ANALYSIS_KEY_1..N key pool (falls back to GEMINI_API_KEY).
+// Result is cached to dtc_codes collection by the caller (index.tsx).
+
+export const analyzeCodeViaServer = createServerFn({ method: "POST" })
+  .inputValidator((d: AnalyzeCodeInput) => d)
+  .handler(async (ctx): Promise<{
+    code: string; title: string; affectedPart: string; severity: string;
+    problem: string; symptoms: string[]; actions: string[];
+    location: string; explanation?: string;
+  } | null> => {
+    const { brand, code, language, localContext } = ctx.data;
+
+    const contextPrompt = localContext
+      ? `Technical Context from Database: ${JSON.stringify(localContext)}`
+      : "No local data found. Use your technical knowledge.";
+
+    const prompt = `
+You are an expert motorcycle diagnostic assistant.
+Analyze the following OBD-II/DTC code for a ${brand} motorcycle.
+
+CODE: ${code}
+${contextPrompt}
+
+Provide details in valid JSON with keys:
+- "code", "title", "affectedPart", "severity" (critical/warning/info),
+- "problem", "symptoms" (array), "actions" (array), "location", "explanation"
+
+RESPONSE LANGUAGE: ${language.toUpperCase()}
+${language === "tanglish" ? "Tanglish: Tamil words in English letters mixed with technical terms." : ""}
+${language === "tamil" ? "Respond in pure Tamil script. Keep technical part names in English." : ""}
+${language === "english" ? "Respond in standard technical English." : ""}
+
+Return ONLY the JSON. No markdown.
+    `.trim();
+
+    const raw = await runServerAI("analysis", async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 2048 } });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON in response");
+      return match[0];
+    });
+
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  });
+
+// ─── Prompt Builders ──────────────────────────────────────────────────────────
 
 function buildGuidePrompt(brand: string, code: string, title: string, problem: string, clientVariation?: string): string {
   const variations = [
@@ -167,7 +303,6 @@ function buildGuidePrompt(brand: string, code: string, title: string, problem: s
     "Focus more on step-by-step multimeter readings this time.",
     "Focus more on visual inspection techniques this time.",
   ];
-  // Use client-passed variation, or fall back to server random
   const variation = clientVariation || variations[Math.floor(Math.random() * variations.length)];
 
   return `
@@ -281,82 +416,3 @@ function buildStaticFallback(brand: string, code: string, title: string): string
 
 Thoda detailed analysis-ku sila minutes wait panni "Refresh" click pannunga.`;
 }
-
-// ─── Analyze Code Server Function ────────────────────────────────────────────
-// Replaces client-side analyzeCodeWithAI — key never reaches browser.
-
-export interface AnalyzeCodeInput {
-  brand: string;
-  brandId: string;
-  code: string;
-  language: string;
-  localContext?: {
-    title?: string;
-    problem?: string;
-    symptoms?: string[];
-    actions?: string[];
-    affectedPart?: string;
-    location?: string;
-    severity?: string;
-  } | null;
-}
-
-export const analyzeCodeViaServer = createServerFn({ method: "POST" })
-  .inputValidator((d: AnalyzeCodeInput) => d)
-  .handler(async (ctx): Promise<{
-    code: string; title: string; affectedPart: string; severity: string;
-    problem: string; symptoms: string[]; actions: string[];
-    location: string; explanation?: string;
-  } | null> => {
-    const { brand, brandId, code, language, localContext } = ctx.data;
-
-    const API_KEY =
-      (typeof process !== "undefined" && (process.env["GEMINI_API_KEY"] || process.env["VITE_GEMINI_API_KEY"])) || "";
-
-    if (!API_KEY) return null;
-
-    const genAI = new GoogleGenerativeAI(API_KEY);
-
-    const contextPrompt = localContext
-      ? `Technical Context from Database: ${JSON.stringify(localContext)}`
-      : "No local data found. Use your technical knowledge.";
-
-    const prompt = `
-You are an expert motorcycle diagnostic assistant.
-Analyze the following OBD-II/DTC code for a ${brand} motorcycle.
-
-CODE: ${code}
-${contextPrompt}
-
-Provide details in valid JSON with keys:
-- "code", "title", "affectedPart", "severity" (critical/warning/info),
-- "problem", "symptoms" (array), "actions" (array), "location", "explanation"
-
-RESPONSE LANGUAGE: ${language.toUpperCase()}
-${language === "tanglish" ? "Tanglish: Tamil words in English letters mixed with technical terms." : ""}
-${language === "tamil" ? "Respond in pure Tamil script. Keep technical part names in English." : ""}
-${language === "english" ? "Respond in standard technical English." : ""}
-
-Return ONLY the JSON. No markdown.
-    `.trim();
-
-    // Fallback chain
-    const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
-    for (const modelName of models) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 2048 } });
-        const result = await model.generateContent(prompt);
-        const text = result.response.text();
-        const match = text.match(/\{[\s\S]*\}/);
-        if (!match) continue;
-        return JSON.parse(match[0]);
-      } catch (e) {
-        const msg = String((e as any)?.message || e);
-        if (msg.includes("429") || msg.includes("403") || msg.includes("quota") || msg.includes("leaked")) {
-          continue;
-        }
-        continue;
-      }
-    }
-    return null;
-  });

@@ -1,29 +1,18 @@
 import { type OBDCode, type Severity } from "@/data/obdCodes";
-import { cacheAICode, getOBDTranslationCache, saveOBDTranslationCache, type OBDTranslationCache } from "./firebaseDb";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { cacheAICode, getOBDTranslationCache, saveOBDTranslationCache, getOBDGuideCache, saveOBDGuideCache, type OBDTranslationCache } from "./firebaseDb";
+import { runWithKeyPool } from "./aiKeyPool";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-
-function getGenAI() {
-  if (!API_KEY) {
-    console.error("VITE_GEMINI_API_KEY is not set.");
-    return null;
-  }
-  return new GoogleGenerativeAI(API_KEY);
-}
-
-function isRateLimitOrAuthError(e: unknown): boolean {
-  const msg = String((e as any)?.message || e);
-  return (
-    msg.includes("429") ||
-    msg.includes("403") ||
-    msg.includes("quota") ||
-    msg.includes("RESOURCE_EXHAUSTED") ||
-    msg.includes("Too Many Requests") ||
-    msg.includes("leaked") ||
-    msg.includes("Forbidden")
-  );
-}
+// ─── gemini.ts — Client-side AI calls ────────────────────────────────────────
+// These run in the browser. API key comes from VITE_GEMINI_API_KEY.
+// For production, prefer the server-side equivalents in translateServer.ts
+// (analyzeCodeViaServer, translateCardViaServer, generateGuideViaServer)
+// which keep keys off the browser entirely.
+//
+// Per-feature key pool:
+//   Analysis:    VITE_GEMINI_ANALYSIS_KEY_1..N  (fallback: VITE_GEMINI_API_KEY)
+//   Translation: VITE_GEMINI_TRANSLATE_KEY_1..N (fallback: VITE_GEMINI_API_KEY)
+//   Guide:       VITE_GEMINI_GUIDE_KEY_1..N     (fallback: VITE_GEMINI_API_KEY)
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Main OBD Code Analysis ───────────────────────────────────────────────────
 export async function analyzeCodeWithAI(
@@ -33,9 +22,6 @@ export async function analyzeCodeWithAI(
   localContext?: any,
   language: string = "english"
 ): Promise<OBDCode | null> {
-  const genAI = getGenAI();
-  if (!genAI) return null;
-
   const contextPrompt = localContext
     ? `Technical Context from Database: ${JSON.stringify(localContext)}`
     : "No local data found. Use your technical knowledge.";
@@ -59,25 +45,26 @@ ${language === "english" ? "Respond in standard technical English." : ""}
 Return ONLY the JSON. No markdown.
   `.trim();
 
-  const models = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
-  let data: any = null;
-
-  for (const modelName of models) {
-    try {
+  const raw = await runWithKeyPool({
+    feature: "analysis",
+    run: async (genAI, modelName) => {
       const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 2048 } });
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        data = JSON.parse(match[0]);
-        break;
-      }
-    } catch (e) {
-      if (isRateLimitOrAuthError(e)) continue;
-    }
-  }
+      if (!match) throw new Error("No JSON in response");
+      return match[0];
+    },
+  });
 
-  if (!data) return null;
+  if (!raw) return null;
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
 
   const obdCode: OBDCode = {
     code: data.code || code,
@@ -101,11 +88,9 @@ export async function translateCardWithAI(
   code: OBDCode,
   targetLang: "tanglish" | "tamil"
 ): Promise<OBDTranslationCache | null> {
+  // Check Firebase cache first — Gemini only called once per code+lang
   const cached = await getOBDTranslationCache(brandId, code.code, targetLang);
   if (cached) return cached;
-
-  const genAI = getGenAI();
-  if (!genAI) return null;
 
   const langInstruction =
     targetLang === "tanglish"
@@ -116,14 +101,18 @@ export async function translateCardWithAI(
 You are a motorcycle workshop assistant. Translate the following OBD fault code details into ${langInstruction}
 
 Input JSON:
-${JSON.stringify({
-    title: code.title,
-    problem: code.problem,
-    affectedPart: code.affectedPart ?? "",
-    symptoms: code.symptoms,
-    actions: code.actions,
-    location: code.location ?? "",
-  }, null, 2)}
+${JSON.stringify(
+    {
+      title: code.title,
+      problem: code.problem,
+      affectedPart: code.affectedPart ?? "",
+      symptoms: code.symptoms,
+      actions: code.actions,
+      location: code.location ?? "",
+    },
+    null,
+    2
+  )}
 
 Return ONLY a valid JSON object with exactly these keys:
 - "title": translated string
@@ -136,37 +125,90 @@ Return ONLY a valid JSON object with exactly these keys:
 No markdown. No extra text. Only JSON.
   `.trim();
 
+  const raw = await runWithKeyPool({
+    feature: "translation",
+    run: async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      const match = text.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON in translation response");
+      return match[0];
+    },
+  });
+
+  if (!raw) return null;
+
+  let d: any;
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error("No JSON in Gemini response");
-
-    const d = JSON.parse(jsonMatch[0]);
-
-    const translation: OBDTranslationCache = {
-      code: code.code,
-      brandId,
-      lang: targetLang,
-      title: d.title ?? code.title,
-      problem: d.problem ?? code.problem,
-      affectedPart: d.affectedPart ?? code.affectedPart ?? "",
-      symptoms: Array.isArray(d.symptoms) ? d.symptoms : code.symptoms,
-      actions: Array.isArray(d.actions) ? d.actions : code.actions,
-      location: d.location ?? code.location ?? "",
-    };
-
-    saveOBDTranslationCache(translation).catch(() => {});
-    return translation;
+    d = JSON.parse(raw);
   } catch (e) {
-    console.error("[translateCardWithAI] error:", e);
+    console.error("[translateCardWithAI] JSON parse error:", e);
     return null;
   }
+
+  const translation: OBDTranslationCache = {
+    code: code.code,
+    brandId,
+    lang: targetLang,
+    title: d.title ?? code.title,
+    problem: d.problem ?? code.problem,
+    affectedPart: d.affectedPart ?? code.affectedPart ?? "",
+    symptoms: Array.isArray(d.symptoms) ? d.symptoms : code.symptoms,
+    actions: Array.isArray(d.actions) ? d.actions : code.actions,
+    location: d.location ?? code.location ?? "",
+  };
+
+  saveOBDTranslationCache(translation).catch(() => {});
+  return translation;
 }
 
 // ─── Diagnostic Guide ─────────────────────────────────────────────────────────
+export async function generateDiagnosticGuide(
+  brand: string,
+  brandId: string,
+  code: string,
+  title: string,
+  problem: string
+): Promise<string | null> {
+  // 1. Check Firebase guide cache — zero AI calls for repeat requests
+  try {
+    const cached = await getOBDGuideCache(brandId, code);
+    if (cached?.guide) {
+      console.log(`[generateDiagnosticGuide] Cache hit: ${brandId}_${code}`);
+      return cached.guide;
+    }
+  } catch (e) {
+    console.warn("[generateDiagnosticGuide] Cache lookup failed:", (e as any)?.message);
+  }
+
+  // 2. Generate via AI with key-pool × model-waterfall
+  const prompt = buildGuidePrompt(brand, code, title, problem);
+
+  const guide = await runWithKeyPool({
+    feature: "guide",
+    run: async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
+      });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    },
+  });
+
+  if (!guide) return buildStaticFallback(brand, code, title);
+
+  // 3. Save to Firebase cache (fire-and-forget)
+  saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
+    console.warn("[generateDiagnosticGuide] Guide cache save failed:", (e as any)?.message)
+  );
+
+  return guide;
+}
+
+// ─── Prompt Builders ──────────────────────────────────────────────────────────
+
 function buildGuidePrompt(brand: string, code: string, title: string, problem: string, clientVariation?: string): string {
   const variations = [
     "Focus more on electrical testing procedures this time.",
@@ -204,17 +246,22 @@ Use EXACTLY this format:
 - **[Cause 2 name]:** [Detailed explanation]
 - **[Cause 3 name]:** [Detailed explanation]
 - **[Cause 4 name]:** [Detailed explanation]
+- **[Cause 5 name]:** [Detailed explanation]
+- **[Cause 6 name]:** [Detailed explanation]
 
 ## Symptoms — Bike-la Enna Therium
 
 - [Symptom 1 — what mechanic will observe]
 - [Symptom 2]
 - [Symptom 3]
+- [Symptom 4]
+- [Symptom 5]
 
 ## Tools Vennum
 
 - **Multimeter:** [What to measure for this code]
 - **OBD Scanner:** [What to check]
+- **[Other tool if needed]:** [Purpose]
 
 ## Step-by-Step Diagnosis
 
@@ -236,12 +283,21 @@ Use EXACTLY this format:
 **Step 6: ECM Signal Test**
 [How to verify ECM signal]
 
+**Step 7: [Additional step specific to this code]**
+[Details]
+
+**Step 8: [Additional step if needed]**
+[Details]
+
 ## Repair Procedure
 
 **Option 1: [Most common fix]**
 [Detailed repair steps]
 
-**Option 2: Wiring Repair**
+**Option 2: [Second fix]**
+[Detailed repair steps]
+
+**Option 3: Wiring Repair**
 [If wiring is the cause]
 
 ## Code Clear Panna
@@ -252,6 +308,7 @@ Use EXACTLY this format:
 
 - [Tip 1 specific to this brand and code]
 - [Tip 2]
+- [Tip 3]
 
 Write every section with maximum detail. Each step must be complete enough to follow without any other reference.
   `.trim();
@@ -275,32 +332,4 @@ function buildStaticFallback(brand: string, code: string, title: string): string
 **${brand} service manual-ai refer pannunga** — specific torque values, wiring diagrams, component locations ellam anga irukku.
 
 Thoda detailed analysis-ku sila minutes wait panni "Refresh" click pannunga.`;
-}
-
-export async function generateDiagnosticGuide(
-  brand: string,
-  code: string,
-  title: string,
-  problem: string
-): Promise<string | null> {
-  const genAI = getGenAI();
-  if (!genAI) return buildStaticFallback(brand, code, title);
-
-  const prompt = buildGuidePrompt(brand, code, title, problem);
-  const GUIDE_MODEL_CHAIN = ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"];
-
-  for (const modelName of GUIDE_MODEL_CHAIN) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { maxOutputTokens: 4096, temperature: 2.0 },
-      });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    } catch (e) {
-      if (isRateLimitOrAuthError(e)) continue;
-    }
-  }
-
-  return buildStaticFallback(brand, code, title);
 }

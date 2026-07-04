@@ -311,3 +311,50 @@ export async function saveOBDTranslationCache(
     console.error("obd_translations save error:", e);
   }
 }
+
+// ─── obd_guides collection ────────────────────────────────────────────────────
+// Stores AI-generated diagnostic guides, keyed by brandId_code
+// First user triggers AI generation → saved to Firestore
+// All subsequent users get instant cached response → ZERO AI calls
+
+const GUIDES_COL = "obd_guides";
+
+export interface OBDGuideCache {
+  code: string;
+  brandId: string;
+  brand: string;
+  guide: string;
+  cachedAt?: any;
+}
+
+/** Get cached diagnostic guide from obd_guides collection */
+export async function getOBDGuideCache(
+  brandId: string,
+  code: string
+): Promise<OBDGuideCache | null> {
+  try {
+    const docId = `${brandId}_${code.toUpperCase()}`;
+    const snap = await getDoc(doc(db, GUIDES_COL, docId));
+    if (!snap.exists()) return null;
+    return snap.data() as OBDGuideCache;
+  } catch (e) {
+    console.error("obd_guides get error:", e);
+    return null;
+  }
+}
+
+/** Save AI-generated guide to obd_guides collection */
+export async function saveOBDGuideCache(
+  data: OBDGuideCache
+): Promise<void> {
+  try {
+    const docId = `${data.brandId}_${data.code.toUpperCase()}`;
+    await setDoc(doc(db, GUIDES_COL, docId), {
+      ...data,
+      code: data.code.toUpperCase(),
+      cachedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("obd_guides save error:", e);
+  }
+}

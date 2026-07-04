@@ -70,7 +70,7 @@ export function ResultCard({ result, brandName, brandId }: {
     setIsAIExpanded(true);
     try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
     try {
-      const text = await generateDiagnosticGuide(brandName, result.code, result.title, result.problem);
+      const text = await generateDiagnosticGuide(brandName, brandId, result.code, result.title, result.problem);
       setGuide(text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`);
     } catch {
       setGuide(`**${result.code} - ${result.title}**\n\nIndha moment-la analysis available illai. Sila minutes wait panni retry pannunga.`);

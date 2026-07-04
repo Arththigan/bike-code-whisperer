@@ -13,6 +13,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // Diagnostic guide cache — read/write by any authenticated user
+    // First user generates → cached → all subsequent users get instant response
+    match /obd_guides/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
     // User profiles — user can read/write their own doc, admin can read all
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
