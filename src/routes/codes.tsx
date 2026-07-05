@@ -11,7 +11,7 @@ import {
   type Severity,
 } from "@/data/obdCodes";
 import {
-  subscribeToFirebaseCodes,
+  fetchAllFirebaseCodes,
   addFirebaseCode,
   deleteFirebaseCode,
   bulkImportCodes,
@@ -53,20 +53,19 @@ function CodesPage() {
 
   useEffect(() => {
     setIsLoading(true);
-    // Subscribe to real-time updates (offline-first & instant)
-    const unsubscribe = subscribeToFirebaseCodes(
-      (codes) => {
-        console.log(`[Codes Page] Successfully synced ${codes.length} codes from Firestore.`);
+    // Cloudflare Workers doesn't support persistent WebSocket connections (onSnapshot).
+    // Use one-time getDocs fetch instead, with a manual refresh on mutations.
+    fetchAllFirebaseCodes()
+      .then((codes) => {
+        console.log(`[Codes Page] Loaded ${codes.length} codes from Firestore.`);
         setFirebaseCodes(codes);
         setIsLoading(false);
-      },
-      (error) => {
-        console.error("Firestore sync subscription failed:", error);
+      })
+      .catch((error) => {
+        console.error("Firestore fetch failed:", error);
         toast.error(`Database Connection Error: ${error.message || error}`);
         setIsLoading(false);
-      }
-    );
-    return () => unsubscribe();
+      });
   }, []);
 
   const handleAddCode = async (c: FirebaseCode) => {
@@ -76,6 +75,9 @@ function CodesPage() {
       toast.success(editingCode ? "Code updated successfully!" : "Code added to Firebase!");
       setShowForm(false);
       setEditingCode(null);
+      // Re-fetch codes after add
+      const updated = await fetchAllFirebaseCodes();
+      setFirebaseCodes(updated);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Error adding code";
       toast.error(message);
@@ -89,6 +91,9 @@ function CodesPage() {
     setIsLoading(true);
     await deleteFirebaseCode(id);
     toast.success("Code deleted!");
+    // Re-fetch codes after delete
+    const updated = await fetchAllFirebaseCodes();
+    setFirebaseCodes(updated);
     setIsLoading(false);
   };
 

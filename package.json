@@ -4,10 +4,10 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "node init && vite dev",
     "remove-duplicates": "ts-node src/scripts/removeDuplicates.ts",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
+    "build": "node init && vite build",
+    "build:dev": "node init && vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
     "test-fetch": "ts-node scratch/test_fetch.ts"

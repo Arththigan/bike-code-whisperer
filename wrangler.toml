@@ -1,0 +1,13 @@
+name = "tanstack-start-app"
+account_id = "ec7b755265f01480b3ee0e9250a3983e"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Assets served from dist/client (built by vite)
+assets = { directory = "dist/client", binding = "ASSETS" }
+
+# Main worker entry point (cloudflare mode generates index.js)
+main = "dist/server/index.js"
+
+[observability]
+enabled = true
