@@ -12,7 +12,8 @@ export default defineConfig({
   cloudflare: false,
   tanstackStart: {
     prerender: {
-      enabled: false,
+      enabled: true,
+      routes: ["/"],
     },
   },
 });
