@@ -216,7 +216,16 @@ No markdown. No extra text. Only JSON.
 //   Same popular code searched by 100 users = 1 AI call total.
 
 export const generateGuideViaServer = createServerFn({ method: "POST" })
-  .inputValidator((d: GenerateGuideInput) => d)
+  .inputValidator((d: GenerateGuideInput) => ({
+    brand: d.brand,
+    brandId: d.brandId,
+    code: d.code,
+    title: d.title,
+    problem: d.problem,
+    // Strip undefined fields — Seroval cannot serialize undefined values
+    ...(d.variation != null && { variation: d.variation }),
+    ...(d.forceRefresh === true && { forceRefresh: true }),
+  }))
   .handler(async (ctx): Promise<string> => {
     const { brand, brandId, code, title, problem, variation, forceRefresh } = ctx.data;
 

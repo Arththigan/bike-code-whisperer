@@ -68,31 +68,56 @@ export async function fetchAllFirebaseCodes(): Promise<FirebaseCode[]> {
   }
 }
 
-/** Lookup a specific code+brand from Firestore with language support */
+/** Lookup a specific code+brand from Firestore with language support.
+ *  Search order:
+ *  1. Exact brand match (e.g. brandId="ktm")
+ *  2. Generic / global_obd2 fallback — only if brand-specific not found
+ *  Only calls AI if nothing found in either.
+ */
 export async function lookupFirebaseCode(
   brandId: string,
   code: string,
   language?: string
 ): Promise<FirebaseCode | null> {
-  try {
-    const q = query(
-      collection(db, COL),
-      where("code", "==", code.toUpperCase()),
-      // Strict brand match; do not fall back to generic codes when a specific brand is selected
-      where("brandId", "==", brandId)
-    );
-    const snap = await getDocs(q);
-    if (snap.empty) return null;
-    
-    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FirebaseCode));
-    
-    if (language) {
-      const match = docs.find((d) => d.language === language);
+  const codeUpper = code.toUpperCase();
+
+  const pickBest = (docs: FirebaseCode[], lang?: string): FirebaseCode => {
+    if (lang) {
+      const match = docs.find((d) => d.language === lang);
       if (match) return match;
     }
-    
-    // Fallback to English or first document
     return docs.find((d) => !d.language || d.language === "english") || docs[0];
+  };
+
+  try {
+    // 1. Brand-specific lookup
+    const brandQ = query(
+      collection(db, COL),
+      where("code", "==", codeUpper),
+      where("brandId", "==", brandId)
+    );
+    const brandSnap = await getDocs(brandQ);
+    if (!brandSnap.empty) {
+      const docs = brandSnap.docs.map((d) => ({ id: d.id, ...d.data() } as FirebaseCode));
+      return pickBest(docs, language);
+    }
+
+    // 2. Generic / global_obd2 fallback (skip if caller already asked for generic)
+    if (brandId !== "generic" && brandId !== "global_obd2") {
+      // Try both alias names in one query using 'in' operator
+      const genericQ = query(
+        collection(db, COL),
+        where("code", "==", codeUpper),
+        where("brandId", "in", ["generic", "global_obd2"])
+      );
+      const genericSnap = await getDocs(genericQ);
+      if (!genericSnap.empty) {
+        const docs = genericSnap.docs.map((d) => ({ id: d.id, ...d.data() } as FirebaseCode));
+        return pickBest(docs, language);
+      }
+    }
+
+    return null;
   } catch (e) {
     console.error("Firebase lookupCode error:", e);
     return null;

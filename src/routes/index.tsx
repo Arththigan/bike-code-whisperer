@@ -8,7 +8,7 @@ import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/componen
 import { PinnedCodes, PinnedItem, loadPinned, savePinned, togglePin } from "@/components/PinnedCodes";
 import { TipCard } from "@/components/TipCard";
 import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
-import { lookupFirebaseCode } from "@/lib/firebaseDb";
+import { lookupFirebaseCode, cacheAICode } from "@/lib/firebaseDb";
 import { analyzeCodeViaServer } from "@/lib/translateServer";
 import { toast } from "sonner";
 import { useAuth } from "@/components/AuthProvider";
@@ -91,7 +91,7 @@ function Index() {
       return;
     }
 
-    // 1. Check Firebase first
+    // 1. Check Firestore first — brand-specific, then generic fallback
     let dbResult: OBDCode | null = await lookupFirebaseCode(bId, cleaned, language);
 
     // 2. Fallback to built-in local static codes
@@ -101,7 +101,7 @@ function Index() {
 
     let result = dbResult;
 
-    // 3. Call AI only for valid codes not found in DB
+    // 3. Call AI only for valid DTC codes not found anywhere in DB
     if (!dbResult && isValidDTC) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
       try {
@@ -118,6 +118,8 @@ function Index() {
             location: aiResult.location,
             ...(aiResult.explanation && { explanation: aiResult.explanation }),
           };
+          // Cache AI result to Firestore so next search skips AI entirely
+          cacheAICode({ ...result, brandId: bId, language, isAIGenerated: true }).catch(() => {});
         }
       } catch (err: any) {
         console.error("Analysis error:", err.message);
@@ -130,9 +132,12 @@ function Index() {
     if (result) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? "";
       const item: HistoryItem = { code: result.code, brandId: bId, brandName: bName, ts: Date.now() };
-      const next = [item, ...history.filter((h) => !(h.code === item.code && h.brandId === item.brandId))].slice(0, 5);
-      setHistory(next);
-      saveHistory(next);
+      // Functional update — avoids stale closure on rapid searches
+      setHistory((prev) => {
+        const next = [item, ...prev.filter((h) => !(h.code === item.code && h.brandId === item.brandId))].slice(0, 5);
+        saveHistory(next);
+        return next;
+      });
     }
     
     setIsAnalyzing(false);

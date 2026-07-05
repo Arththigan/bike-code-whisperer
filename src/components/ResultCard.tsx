@@ -142,8 +142,7 @@ export function ResultCard({ result, brandName, brandId }: {
           code: result.code,
           title: result.title,
           problem: result.problem,
-          variation: undefined,
-          forceRefresh,
+          ...(forceRefresh && { forceRefresh: true }),
         }
       });
       const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
