@@ -4,7 +4,8 @@ import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2
 import { useAuth } from "./AuthProvider";
 import { translations, translateDTCTitle } from "@/lib/translations";
 import { useEffect, useRef, useState } from "react";
-import { translateCardWithAI, generateDiagnosticGuide } from "@/lib/gemini";
+import { translateCardViaServer, generateGuideViaServer } from "@/lib/translateServer";
+import { getOBDTranslationCache, getOBDGuideCache, saveOBDGuideCache } from "@/lib/firebaseDb";
 import type { OBDTranslationCache } from "@/lib/firebaseDb";
 
 const sevPill: Record<Severity, string> = {
@@ -62,17 +63,36 @@ export function ResultCard({ result, brandName, brandId }: {
 
   const toggleCardLang = async () => {
     if (cardLang === "english") {
-      // Switch to Tanglish
       setCardLang("tanglish");
       if (translationMemCache.current) {
-        // Already fetched this session — use memory cache instantly
         setTranslated(translationMemCache.current);
         return;
       }
-      // Fetch from Firestore cache or Gemini
       setIsTranslating(true);
       try {
-        const data = await translateCardWithAI(brandId, result, "tanglish");
+        // Check Firebase cache first
+        const cached = await getOBDTranslationCache(brandId, result.code, "tanglish");
+        if (cached) {
+          translationMemCache.current = cached;
+          setTranslated(cached);
+          return;
+        }
+        // Call server function — key stays server-side
+        const data = await translateCardViaServer({
+          data: {
+            brandId,
+            code: {
+              code: result.code,
+              title: result.title,
+              problem: result.problem,
+              affectedPart: result.affectedPart ?? "",
+              symptoms: result.symptoms,
+              actions: result.actions,
+              location: result.location ?? "",
+            },
+            targetLang: "tanglish",
+          }
+        });
         if (data) {
           translationMemCache.current = data;
           setTranslated(data);
@@ -81,7 +101,6 @@ export function ResultCard({ result, brandName, brandId }: {
         setIsTranslating(false);
       }
     } else {
-      // Switch back to English — instant, no fetch
       setCardLang("english");
     }
   };
@@ -99,9 +118,27 @@ export function ResultCard({ result, brandName, brandId }: {
     setIsAIExpanded(true);
     try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
     try {
-      const text = await generateDiagnosticGuide(brandName, brandId, result.code, result.title, result.problem, forceRefresh);
+      // Check Firebase cache first
+      const cached = await getOBDGuideCache(brandId, result.code);
+      if (cached?.guide && !forceRefresh) {
+        const content = cached.guide;
+        SESSION_GUIDE_CACHE.set(cacheKey, content);
+        setGuide(content);
+        setIsLoadingGuide(false);
+        return;
+      }
+      // Call server function — key stays server-side
+      const text = await generateGuideViaServer({
+        data: {
+          brand: brandName,
+          brandId,
+          code: result.code,
+          title: result.title,
+          problem: result.problem,
+          variation: undefined,
+        }
+      });
       const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
-      // Save to session cache only on first-time fetch (not forceRefresh — original stays intact)
       if (!forceRefresh) {
         SESSION_GUIDE_CACHE.set(cacheKey, content);
       }
