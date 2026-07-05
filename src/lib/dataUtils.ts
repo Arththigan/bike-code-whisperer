@@ -7,7 +7,8 @@ export async function parseCSVToCodes(file: File): Promise<{ codes: FirebaseCode
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string;
-        const lines = text.split("\n");
+        // Normalise both Windows (\r\n) and Unix (\n) line endings
+        const lines = text.split(/\r?\n/);
         const headers = lines[0].split(",").map(h => h.trim().toLowerCase());
         
         if (!headers.includes("code") || !headers.includes("brand")) {

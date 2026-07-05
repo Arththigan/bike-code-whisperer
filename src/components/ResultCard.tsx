@@ -96,7 +96,14 @@ export function ResultCard({ result, brandName, brandId }: {
         if (data) {
           translationMemCache.current = data;
           setTranslated(data);
+        } else {
+          // Translation returned nothing — fall back to English view
+          setCardLang("english");
         }
+      } catch (err) {
+        console.error("Translation error:", err);
+        // Revert to English on failure so fields don't go blank
+        setCardLang("english");
       } finally {
         setIsTranslating(false);
       }
@@ -136,6 +143,7 @@ export function ResultCard({ result, brandName, brandId }: {
           title: result.title,
           problem: result.problem,
           variation: undefined,
+          forceRefresh,
         }
       });
       const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
@@ -143,7 +151,8 @@ export function ResultCard({ result, brandName, brandId }: {
         SESSION_GUIDE_CACHE.set(cacheKey, content);
       }
       setGuide(content);
-    } catch {
+    } catch (err) {
+      console.error("[fetchGuide] Server function threw:", err);
       setGuide(`**${result.code} - ${result.title}**\n\nIndha moment-la analysis available illai. Sila minutes wait panni retry pannunga.`);
     } finally {
       setIsLoadingGuide(false);

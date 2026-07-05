@@ -19,6 +19,9 @@ import { fetchAllFirebaseCodes, bulkImportCodes } from "@/lib/firebaseDb";
 import { getAllBuiltInCodes } from "@/data/obdCodes";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
+import { db } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -51,6 +54,21 @@ function SettingsPage() {
   const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const t = (key: string) => translations[key]?.[language] || translations[key]?.["english"] || key;
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    try {
+      setIsProcessing(true);
+      await setDoc(doc(db, "users", user.id), {
+        name: profile.name.trim(),
+      }, { merge: true });
+      toast.success("Profile updated successfully!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save profile.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,7 +162,12 @@ function SettingsPage() {
                   />
                 </div>
               </div>
-              <button className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors">
+              <button 
+                onClick={handleSaveProfile}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {isProcessing && <Loader2 className="h-4 w-4 animate-spin" />}
                 {t("saveChanges")}
               </button>
             </div>

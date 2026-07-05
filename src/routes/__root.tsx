@@ -112,13 +112,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="light">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
-        {/* Prevent theme flash: read localStorage before React hydrates */}
+        {/* Prevent theme flash: read localStorage before React hydrates.
+            This runs synchronously before paint, so the correct class is set
+            before React mounts. suppressHydrationWarning on <html> tells React
+            to accept the class mismatch between SSR ("") and client ("dark"/"light"). */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'){document.documentElement.classList.remove('light');document.documentElement.classList.add('dark');}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('theme');document.documentElement.classList.add(t==='dark'?'dark':'light');}catch(e){document.documentElement.classList.add('light');}})();`,
           }}
         />
       </head>

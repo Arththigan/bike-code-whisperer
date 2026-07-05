@@ -89,12 +89,18 @@ function CodesPage() {
   const handleDeleteCode = async (id: string) => {
     if (!confirm("Are you sure you want to delete this custom code?")) return;
     setIsLoading(true);
-    await deleteFirebaseCode(id);
-    toast.success("Code deleted!");
-    // Re-fetch codes after delete
-    const updated = await fetchAllFirebaseCodes();
-    setFirebaseCodes(updated);
-    setIsLoading(false);
+    try {
+      await deleteFirebaseCode(id);
+      toast.success("Code deleted!");
+      // Re-fetch codes after delete
+      const updated = await fetchAllFirebaseCodes();
+      setFirebaseCodes(updated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Error deleting code";
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleEditClick = (c: FirebaseCode) => {
@@ -129,6 +135,9 @@ function CodesPage() {
       if (!cancelImportRef.current) {
         const duplicateCount = codes.length - count;
         toast.success(`Successfully imported ${count} codes${duplicateCount > 0 ? ` (${duplicateCount} duplicates skipped)` : ''} for ${brand || 'various brands'}`);
+        // Bug 3 fix: Refresh the list so imported codes appear without a page reload
+        const updated = await fetchAllFirebaseCodes();
+        setFirebaseCodes(updated);
       }
     } catch (error) {
       if (!cancelImportRef.current) {

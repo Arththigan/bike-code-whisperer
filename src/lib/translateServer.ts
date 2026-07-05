@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { OBDTranslationCache } from "./firebaseDb";
-import { getOBDGuideCache, saveOBDGuideCache } from "./firebaseDb";
+import { getOBDGuideCache, saveOBDGuideCache, getOBDTranslationCache, saveOBDTranslationCache } from "./firebaseDb";
 import { runWithKeyPool, isRateLimitOrAuthError } from "./aiKeyPool";
 
 // ─── Server-side key pool helper ──────────────────────────────────────────────
@@ -103,6 +103,7 @@ export interface GenerateGuideInput {
   problem: string;
   _ts?: number;
   variation?: string;
+  forceRefresh?: boolean;
 }
 
 export interface AnalyzeCodeInput {
@@ -129,6 +130,17 @@ export const translateCardViaServer = createServerFn({ method: "POST" })
   .inputValidator((d: TranslateCardInput) => d)
   .handler(async (ctx): Promise<OBDTranslationCache> => {
     const { brandId, code, targetLang } = ctx.data;
+
+    // 1. Check Firebase cache first — avoids Gemini call on repeat requests
+    try {
+      const cached = await getOBDTranslationCache(brandId, code.code, targetLang);
+      if (cached) {
+        console.log(`[TranslateServer] Cache hit: ${brandId}_${code.code}_${targetLang}`);
+        return cached;
+      }
+    } catch (e) {
+      console.warn("[TranslateServer] Cache lookup failed, proceeding to AI:", (e as any)?.message);
+    }
 
     const langInstruction =
       targetLang === "tanglish"
@@ -176,7 +188,7 @@ No markdown. No extra text. Only JSON.
 
     const d = JSON.parse(jsonMatch[0]);
 
-    return {
+    const translation: OBDTranslationCache = {
       code: code.code,
       brandId,
       lang: targetLang,
@@ -187,6 +199,13 @@ No markdown. No extra text. Only JSON.
       actions: Array.isArray(d.actions) ? d.actions : code.actions,
       location: d.location ?? code.location ?? "",
     };
+
+    // 2. Save to Firebase cache (fire-and-forget — same pattern as guide cache)
+    saveOBDTranslationCache(translation).catch((e) =>
+      console.warn("[TranslateServer] Translation cache save failed:", (e as any)?.message)
+    );
+
+    return translation;
   });
 
 // ─── Diagnostic Guide Server Function ────────────────────────────────────────
@@ -199,30 +218,49 @@ No markdown. No extra text. Only JSON.
 export const generateGuideViaServer = createServerFn({ method: "POST" })
   .inputValidator((d: GenerateGuideInput) => d)
   .handler(async (ctx): Promise<string> => {
-    const { brand, brandId, code, title, problem, variation } = ctx.data;
+    const { brand, brandId, code, title, problem, variation, forceRefresh } = ctx.data;
 
-    // 1. Check Firebase guide cache first
-    try {
-      const cached = await getOBDGuideCache(brandId, code);
-      if (cached?.guide) {
-        console.log(`[GuideServer] Cache hit: ${brandId}_${code}`);
-        return cached.guide;
+    // 1. Check Firebase guide cache first — skip if forceRefresh is true
+    if (!forceRefresh) {
+      try {
+        const cached = await getOBDGuideCache(brandId, code);
+        if (cached?.guide) {
+          console.log(`[GuideServer] Cache hit: ${brandId}_${code}`);
+          return cached.guide;
+        }
+      } catch (e) {
+        console.warn("[GuideServer] Cache lookup failed, proceeding to AI:", (e as any)?.message);
       }
-    } catch (e) {
-      console.warn("[GuideServer] Cache lookup failed, proceeding to AI:", (e as any)?.message);
+    } else {
+      console.log(`[GuideServer] Force refresh: ${brandId}_${code} — bypassing cache`);
     }
+
+    // Log available keys for debugging
+    const availableKeys = getServerKeys("guide");
+    console.log(`[GuideServer] Keys available: ${availableKeys.length}, brand=${brand}, code=${code}`);
 
     // 2. Generate via AI with key-pool × model-waterfall
     const prompt = buildGuidePrompt(brand, code, title, problem, variation);
 
-    const guide = await runServerAI("guide", async (genAI, modelName) => {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { maxOutputTokens: 8192, temperature: 1.0 },
+    let guide: string | null = null;
+    try {
+      guide = await runServerAI("guide", async (genAI, modelName) => {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: 8192,
+            temperature: 0.9,
+          },
+        });
+        const result = await model.generateContent(prompt);
+        const text = result.response.text();
+        if (!text || text.trim().length < 50) throw new Error("Empty or too-short response from model");
+        return text;
       });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    });
+    } catch (e) {
+      console.error("[GuideServer] runServerAI threw unexpectedly:", (e as any)?.message);
+      guide = null;
+    }
 
     if (!guide) {
       console.warn("[GuideServer] All keys + models exhausted — static fallback");
@@ -230,9 +268,12 @@ export const generateGuideViaServer = createServerFn({ method: "POST" })
     }
 
     // 3. Save to Firebase cache (fire-and-forget)
-    saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
-      console.warn("[GuideServer] Guide cache save failed:", (e as any)?.message)
-    );
+    // forceRefresh = user wants a fresh variation — don't overwrite the permanent cache
+    if (!forceRefresh) {
+      saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
+        console.warn("[GuideServer] Guide cache save failed:", (e as any)?.message)
+      );
+    }
 
     return guide;
   });
