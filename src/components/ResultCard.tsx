@@ -409,9 +409,10 @@ function AILoadingCard({ language }: { language: string }) {
 }
 
 function BulletList({ items }: { items: string[] }) {
+  const safeItems = items ?? [];
   return (
     <ul className="space-y-1.5">
-      {items.map((s, i) => (
+      {safeItems.map((s, i) => (
         <li key={i} className="text-sm text-foreground/90">
           <span className="mr-1.5 text-muted-foreground">•</span>
           {s}
