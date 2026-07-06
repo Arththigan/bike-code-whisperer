@@ -107,11 +107,11 @@ export function isRateLimitOrAuthError(e: unknown): boolean {
 // Translation: flash is enough, no need for pro
 
 const MODEL_CHAINS: Record<AIFeature, string[]> = {
-  // flash-lite first: 1500 RPD free tier — much higher quota than flash (10 RPD)
-  analysis: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
-  translation: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
-  // Guide: flash-lite has 1500 RPD vs flash's 10 RPD — prioritize lite to avoid quota exhaustion
-  guide: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
+  // flash first everywhere — more reliable, consistent performance
+  // flash-lite as fallback (higher RPD quota but prone to 503 on heavy load)
+  analysis: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+  translation: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+  guide: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
 };
 
 export interface RunWithPoolOptions {
@@ -145,6 +145,7 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
   const errors: string[] = [];
 
   for (const modelName of models) {
+    let modelFailed = false;
     for (const key of keys) {
       try {
         const genAI = new GoogleGenerativeAI(key);
@@ -152,14 +153,21 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
         console.log(`[aiKeyPool:${feature}] ✓ model=${modelName}`);
         return result;
       } catch (e) {
-        const status = (e as any)?.status ?? (e as any)?.statusCode ?? 0;
+        const status = Number((e as any)?.status ?? (e as any)?.statusCode ?? 0);
         const msg = String((e as any)?.message || e);
         const errSummary = `model=${modelName} status=${status}: ${msg.slice(0, 100)}`;
         console.warn(`[aiKeyPool:${feature}] FAIL key=${key.slice(0,8)}... ${errSummary}`);
         errors.push(errSummary);
+
+        // 503 = model overloaded — no point trying other keys on same model, skip to next model
+        if (status === 503 || msg.includes("503") || msg.includes("overloaded") || msg.includes("UNAVAILABLE")) {
+          modelFailed = true;
+          break;
+        }
         continue;
       }
     }
+    if (modelFailed) continue; // jump to next model immediately
   }
 
   const lastError = errors[errors.length - 1] ?? "unknown";
