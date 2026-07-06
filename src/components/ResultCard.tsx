@@ -38,6 +38,8 @@ export function ResultCard({ result, brandName, brandId }: {
   // Guide state — local only, never persisted
   const [guide, setGuide] = useState<string | null>(null);
   const [isLoadingGuide, setIsLoadingGuide] = useState(false);
+  const [guideError, setGuideError] = useState(false);
+  const [guideErrorMsg, setGuideErrorMsg] = useState("");
   // Cache in memory so toggling back doesn't re-fetch
   const translationMemCache = useRef<OBDTranslationCache | null>(null);
 
@@ -51,6 +53,8 @@ export function ResultCard({ result, brandName, brandId }: {
       setGuide(null);
     }
     setIsLoadingGuide(false);
+    setGuideError(false);
+    setGuideErrorMsg("");
     setTranslated(null);
     setCardLang("english");
     translationMemCache.current = null;
@@ -99,17 +103,17 @@ export function ResultCard({ result, brandName, brandId }: {
   const fetchGuide = async (forceRefresh = false) => {
     const cacheKey = `${brandId}_${result.code}`;
 
-    // If already in session cache and not forcing refresh — show instantly (0 AI/Firebase calls)
     if (!forceRefresh && SESSION_GUIDE_CACHE.has(cacheKey)) {
       setGuide(SESSION_GUIDE_CACHE.get(cacheKey)!);
+      setGuideError(false);
       return;
     }
 
     setIsLoadingGuide(true);
     setIsAIExpanded(true);
+    setGuideError(false);
     try { localStorage.setItem("ai-section-expanded", "true"); } catch {}
     try {
-      // Check Firebase cache first
       const cached = await getOBDGuideCache(brandId, result.code);
       if (cached?.guide && !forceRefresh) {
         const content = cached.guide;
@@ -118,18 +122,25 @@ export function ResultCard({ result, brandName, brandId }: {
         setIsLoadingGuide(false);
         return;
       }
-      // Call client-side Gemini directly
       const text = await generateDiagnosticGuide(
         brandName, brandId, result.code, result.title, result.problem, forceRefresh
       );
-      const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
-      if (!forceRefresh) {
-        SESSION_GUIDE_CACHE.set(cacheKey, content);
+      if (text) {
+        if (!forceRefresh) SESSION_GUIDE_CACHE.set(cacheKey, text);
+        setGuide(text);
+      } else {
+        // null return = all keys exhausted
+        setGuideErrorMsg("All AI keys exhausted — quota limit reached or network blocked.");
+        setGuideError(true);
       }
-      setGuide(content);
     } catch (err) {
-      console.error("[fetchGuide] Server function threw:", err);
-      setGuide(`**${result.code} - ${result.title}**\n\nIndha moment-la analysis available illai. Sila minutes wait panni retry pannunga.`);
+      console.error("[fetchGuide] error:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setGuideError(true);
+      // Show error details on screen — helps debug mobile issues without DevTools
+      console.warn("[fetchGuide] visible error:", msg.slice(0, 200));
+      // Store error message for display
+      setGuideErrorMsg(msg.slice(0, 120));
     } finally {
       setIsLoadingGuide(false);
     }
@@ -210,17 +221,41 @@ export function ResultCard({ result, brandName, brandId }: {
         </Quadrant>
       </div>
 
-      {/* Analyze Details button — shown when no guide loaded yet */}
-      {!isLoadingGuide && !guide && (
+      {/* Analyze Details button — shown when no guide loaded yet and no error */}
+      {!isLoadingGuide && !guide && !guideError && (
         <div className="border-t border-border bg-card p-4 flex justify-end">
           <button
-            onClick={fetchGuide}
+            onClick={() => fetchGuide()}
             className="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-extrabold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
             style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-glow)" }}
           >
             <Sparkles className="h-4 w-4" />
             Analyze Details
           </button>
+        </div>
+      )}
+
+      {/* Error state — shown when guide failed to load */}
+      {!isLoadingGuide && guideError && (
+        <div className="border-t border-border bg-card p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              Analysis load aagala — retry pannunga.
+            </p>
+            <button
+              onClick={() => fetchGuide()}
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold text-primary-foreground transition-all hover:opacity-90 active:scale-95"
+              style={{ background: "var(--gradient-primary)" }}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          </div>
+          {guideErrorMsg && (
+            <p className="text-[10px] font-mono text-muted-foreground/60 break-all">
+              {guideErrorMsg}
+            </p>
+          )}
         </div>
       )}
 

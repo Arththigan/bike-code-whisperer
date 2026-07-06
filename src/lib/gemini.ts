@@ -47,7 +47,10 @@ Return ONLY the JSON. No markdown.
         model: modelName,
         generationConfig: { maxOutputTokens: 2048 },
       });
-      const result = await model.generateContent(prompt);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout after 30s")), 30000)
+      );
+      const result = await Promise.race([model.generateContent(prompt), timeout]);
       const text = result.response.text();
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON in response");
@@ -128,7 +131,10 @@ No markdown. No extra text. Only JSON.
     feature: "translation",
     run: async (genAI, modelName) => {
       const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout after 30s")), 30000)
+      );
+      const result = await Promise.race([model.generateContent(prompt), timeout]);
       const text = result.response.text();
       const match = text.match(/\{[\s\S]*\}/);
       if (!match) throw new Error("No JSON in translation response");
@@ -253,9 +259,19 @@ Use EXACTLY this format:
     run: async (genAI, modelName) => {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { maxOutputTokens: 8192, temperature: 0.9 },
+        // Reduce max tokens for faster response — still detailed enough
+        generationConfig: { maxOutputTokens: 4096, temperature: 0.9 },
       });
-      const result = await model.generateContent(prompt);
+
+      // 60s timeout — mobile networks can be slow
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout after 60s")), 60000)
+      );
+
+      const result = await Promise.race([
+        model.generateContent(prompt),
+        timeoutPromise,
+      ]);
       const text = result.response.text();
       if (!text || text.trim().length < 50) throw new Error("Empty response");
       return text;

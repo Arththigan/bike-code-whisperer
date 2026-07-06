@@ -107,10 +107,11 @@ export function isRateLimitOrAuthError(e: unknown): boolean {
 // Translation: flash is enough, no need for pro
 
 const MODEL_CHAINS: Record<AIFeature, string[]> = {
+  // flash-lite first: 1500 RPD free tier — much higher quota than flash (10 RPD)
   analysis: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
-  translation: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
-  // Guide starts with flash (not flash-lite) — guide is long prompt, flash-lite often 503s
-  guide: ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+  translation: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+  // Guide: flash-lite has 1500 RPD vs flash's 10 RPD — prioritize lite to avoid quota exhaustion
+  guide: ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"],
 };
 
 export interface RunWithPoolOptions {
@@ -149,18 +150,15 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
         console.log(`[aiKeyPool:${feature}] ✓ model=${modelName}`);
         return result;
       } catch (e) {
-        if (isRateLimitOrAuthError(e)) {
-          const status = (e as any)?.status ?? (e as any)?.statusCode ?? "?";
-          console.warn(`[aiKeyPool:${feature}] ${status} on model=${modelName} — trying next key/model`);
-          continue;
-        }
-        // Non-rate-limit error — log and try next key anyway
-        console.warn(`[aiKeyPool:${feature}] error on model=${modelName}:`, (e as any)?.status, (e as any)?.message);
+        const status = (e as any)?.status ?? (e as any)?.statusCode ?? 0;
+        const msg = String((e as any)?.message || e);
+        console.warn(`[aiKeyPool:${feature}] error model=${modelName} status=${status}:`, msg.slice(0, 80));
+        // Always try next key/model regardless of error type
         continue;
       }
     }
   }
 
-  console.warn(`[aiKeyPool:${feature}] All keys + models exhausted → fallback`);
+  console.warn(`[aiKeyPool:${feature}] All keys + models exhausted → null`);
   return null;
 }
