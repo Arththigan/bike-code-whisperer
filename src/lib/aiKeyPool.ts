@@ -142,6 +142,8 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
     return null;
   }
 
+  const errors: string[] = [];
+
   for (const modelName of models) {
     for (const key of keys) {
       try {
@@ -152,13 +154,18 @@ export async function runWithKeyPool(options: RunWithPoolOptions): Promise<strin
       } catch (e) {
         const status = (e as any)?.status ?? (e as any)?.statusCode ?? 0;
         const msg = String((e as any)?.message || e);
-        console.warn(`[aiKeyPool:${feature}] error model=${modelName} status=${status}:`, msg.slice(0, 80));
-        // Always try next key/model regardless of error type
+        const errSummary = `model=${modelName} status=${status}: ${msg.slice(0, 100)}`;
+        console.warn(`[aiKeyPool:${feature}] FAIL key=${key.slice(0,8)}... ${errSummary}`);
+        errors.push(errSummary);
         continue;
       }
     }
   }
 
-  console.warn(`[aiKeyPool:${feature}] All keys + models exhausted → null`);
-  return null;
+  const lastError = errors[errors.length - 1] ?? "unknown";
+  console.warn(`[aiKeyPool:${feature}] All exhausted. Last error: ${lastError}`);
+  // Attach last error to returned null so callers can surface it
+  const err = new Error(`[${feature}] All keys exhausted. ${lastError}`);
+  (err as any).isExhausted = true;
+  throw err;
 }

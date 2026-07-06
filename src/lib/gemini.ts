@@ -254,29 +254,30 @@ Use EXACTLY this format:
 - [tip 2]
   `.trim();
 
-  const guide = await runWithKeyPool({
-    feature: "guide",
-    run: async (genAI, modelName) => {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        // Reduce max tokens for faster response — still detailed enough
-        generationConfig: { maxOutputTokens: 4096, temperature: 0.9 },
-      });
-
-      // 60s timeout — mobile networks can be slow
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Request timeout after 60s")), 60000)
-      );
-
-      const result = await Promise.race([
-        model.generateContent(prompt),
-        timeoutPromise,
-      ]);
-      const text = result.response.text();
-      if (!text || text.trim().length < 50) throw new Error("Empty response");
-      return text;
-    },
-  });
+  let guide: string | null = null;
+  try {
+    guide = await runWithKeyPool({
+      feature: "guide",
+      run: async (genAI, modelName) => {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { maxOutputTokens: 4096, temperature: 0.9 },
+        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Request timeout after 60s")), 60000)
+        );
+        const result = await Promise.race([
+          model.generateContent(prompt),
+          timeoutPromise,
+        ]);
+        const text = result.response.text();
+        if (!text || text.trim().length < 50) throw new Error("Empty response");
+        return text;
+      },
+    });
+  } catch (e) {
+    throw e; // re-throw so ResultCard can surface the actual error message
+  }
 
   if (!guide) return null;
 
