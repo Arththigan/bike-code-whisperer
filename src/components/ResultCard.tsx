@@ -4,8 +4,8 @@ import { Activity, CheckCircle2, FileQuestion, MapPin, Wrench, Sparkles, Loader2
 import { useAuth } from "./AuthProvider";
 import { translations, translateDTCTitle } from "@/lib/translations";
 import { useEffect, useRef, useState } from "react";
-import { translateCardViaServer, generateGuideViaServer } from "@/lib/translateServer";
-import { getOBDTranslationCache, getOBDGuideCache, saveOBDGuideCache } from "@/lib/firebaseDb";
+import { translateCardWithAI, generateDiagnosticGuide } from "@/lib/gemini";
+import { getOBDTranslationCache, getOBDGuideCache } from "@/lib/firebaseDb";
 import type { OBDTranslationCache } from "@/lib/firebaseDb";
 
 const sevPill: Record<Severity, string> = {
@@ -77,32 +77,16 @@ export function ResultCard({ result, brandName, brandId }: {
           setTranslated(cached);
           return;
         }
-        // Call server function — key stays server-side
-        const data = await translateCardViaServer({
-          data: {
-            brandId,
-            code: {
-              code: result.code,
-              title: result.title,
-              problem: result.problem,
-              affectedPart: result.affectedPart ?? "",
-              symptoms: result.symptoms,
-              actions: result.actions,
-              location: result.location ?? "",
-            },
-            targetLang: "tanglish",
-          }
-        });
+        // Call client-side Gemini directly
+        const data = await translateCardWithAI(brandId, result, "tanglish");
         if (data) {
           translationMemCache.current = data;
           setTranslated(data);
         } else {
-          // Translation returned nothing — fall back to English view
           setCardLang("english");
         }
       } catch (err) {
         console.error("Translation error:", err);
-        // Revert to English on failure so fields don't go blank
         setCardLang("english");
       } finally {
         setIsTranslating(false);
@@ -134,17 +118,10 @@ export function ResultCard({ result, brandName, brandId }: {
         setIsLoadingGuide(false);
         return;
       }
-      // Call server function — key stays server-side
-      const text = await generateGuideViaServer({
-        data: {
-          brand: brandName,
-          brandId,
-          code: result.code,
-          title: result.title,
-          problem: result.problem,
-          ...(forceRefresh && { forceRefresh: true }),
-        }
-      });
+      // Call client-side Gemini directly
+      const text = await generateDiagnosticGuide(
+        brandName, brandId, result.code, result.title, result.problem, forceRefresh
+      );
       const content = text ?? `**${result.code} analysis vera try pannunga.**\n\nThoda neram wait panni retry pannunga — all analysis engines busy-a iruku.`;
       if (!forceRefresh) {
         SESSION_GUIDE_CACHE.set(cacheKey, content);

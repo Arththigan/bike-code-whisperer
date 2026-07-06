@@ -8,9 +8,8 @@ import { HistoryItem, RecentHistory, loadHistory, saveHistory } from "@/componen
 import { PinnedCodes, PinnedItem, loadPinned, savePinned, togglePin } from "@/components/PinnedCodes";
 import { TipCard } from "@/components/TipCard";
 import { BRANDS, lookupCode, type OBDCode } from "@/data/obdCodes";
-import { lookupFirebaseCode, cacheAICode } from "@/lib/firebaseDb";
-import { analyzeCodeViaServer } from "@/lib/translateServer";
-import { toast } from "sonner";
+import { lookupFirebaseCode } from "@/lib/firebaseDb";
+import { analyzeCodeWithAI } from "@/lib/gemini";
 import { useAuth } from "@/components/AuthProvider";
 import { translations } from "@/lib/translations";
 
@@ -105,21 +104,9 @@ function Index() {
     if (!dbResult && isValidDTC) {
       const bName = BRANDS.find((b) => b.id === bId)?.name ?? bId;
       try {
-        const aiResult = await analyzeCodeViaServer({ data: { brand: bName, brandId: bId, code: cleaned, language } });
+        const aiResult = await analyzeCodeWithAI(bName, bId, cleaned, language);
         if (aiResult) {
-          result = {
-            code: aiResult.code,
-            title: aiResult.title,
-            affectedPart: aiResult.affectedPart,
-            severity: aiResult.severity as any,
-            problem: aiResult.problem,
-            symptoms: aiResult.symptoms,
-            actions: aiResult.actions,
-            location: aiResult.location,
-            ...(aiResult.explanation && { explanation: aiResult.explanation }),
-          };
-          // Cache AI result to Firestore so next search skips AI entirely
-          cacheAICode({ ...result, brandId: bId, language, isAIGenerated: true }).catch(() => {});
+          result = aiResult;
         }
       } catch (err: any) {
         console.error("Analysis error:", err.message);

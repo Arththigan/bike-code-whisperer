@@ -1,37 +1,32 @@
-import { type OBDCode, type Severity } from "@/data/obdCodes";
-import { cacheAICode, getOBDTranslationCache, saveOBDTranslationCache, getOBDGuideCache, saveOBDGuideCache, type OBDTranslationCache } from "./firebaseDb";
-import { runWithKeyPool } from "./aiKeyPool";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import {
+  cacheAICode,
+  getOBDTranslationCache,
+  saveOBDTranslationCache,
+  getOBDGuideCache,
+  saveOBDGuideCache,
+  type OBDTranslationCache,
+} from "./firebaseDb";
+import { getKeysForFeature, runWithKeyPool } from "./aiKeyPool";
+import type { OBDCode, Severity } from "@/data/obdCodes";
 
-// ─── gemini.ts — Client-side AI calls ────────────────────────────────────────
-// These run in the browser. API key comes from VITE_GEMINI_API_KEY.
-// For production, prefer the server-side equivalents in translateServer.ts
-// (analyzeCodeViaServer, translateCardViaServer, generateGuideViaServer)
-// which keep keys off the browser entirely.
-//
-// Per-feature key pool:
-//   Analysis:    VITE_GEMINI_ANALYSIS_KEY_1..N  (fallback: VITE_GEMINI_API_KEY)
-//   Translation: VITE_GEMINI_TRANSLATE_KEY_1..N (fallback: VITE_GEMINI_API_KEY)
-//   Guide:       VITE_GEMINI_GUIDE_KEY_1..N     (fallback: VITE_GEMINI_API_KEY)
+// ─── gemini.ts — Client-side AI calls ─────────────────────────────────────────
+// Runs directly in the browser using VITE_GEMINI_* keys from import.meta.env.
+// Firebase cache is checked first on every call — AI is only called on cache miss.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ─── Main OBD Code Analysis ───────────────────────────────────────────────────
+// ─── OBD Code Analysis ────────────────────────────────────────────────────────
 export async function analyzeCodeWithAI(
   brand: string,
   brandId: string,
   code: string,
-  localContext?: any,
-  language: string = "english"
+  language = "english"
 ): Promise<OBDCode | null> {
-  const contextPrompt = localContext
-    ? `Technical Context from Database: ${JSON.stringify(localContext)}`
-    : "No local data found. Use your technical knowledge.";
-
   const prompt = `
 You are an expert motorcycle diagnostic assistant.
 Analyze the following OBD-II/DTC code for a ${brand} motorcycle.
 
 CODE: ${code}
-${contextPrompt}
 
 Provide details in valid JSON with keys:
 - "code", "title", "affectedPart", "severity" (critical/warning/info),
@@ -48,7 +43,10 @@ Return ONLY the JSON. No markdown.
   const raw = await runWithKeyPool({
     feature: "analysis",
     run: async (genAI, modelName) => {
-      const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { maxOutputTokens: 2048 } });
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 2048 },
+      });
       const result = await model.generateContent(prompt);
       const text = result.response.text();
       const match = text.match(/\{[\s\S]*\}/);
@@ -78,7 +76,8 @@ Return ONLY the JSON. No markdown.
     ...(data.explanation && { explanation: data.explanation }),
   };
 
-  cacheAICode({ ...obdCode, brandId, language }).catch(() => {});
+  // Cache to Firestore so next search skips AI entirely
+  cacheAICode({ ...obdCode, brandId, language, isAIGenerated: true }).catch(() => {});
   return obdCode;
 }
 
@@ -88,7 +87,7 @@ export async function translateCardWithAI(
   code: OBDCode,
   targetLang: "tanglish" | "tamil"
 ): Promise<OBDTranslationCache | null> {
-  // Check Firebase cache first — Gemini only called once per code+lang
+  // 1. Firebase cache check — only call AI on miss
   const cached = await getOBDTranslationCache(brandId, code.code, targetLang);
   if (cached) return cached;
 
@@ -142,8 +141,7 @@ No markdown. No extra text. Only JSON.
   let d: any;
   try {
     d = JSON.parse(raw);
-  } catch (e) {
-    console.error("[translateCardWithAI] JSON parse error:", e);
+  } catch {
     return null;
   }
 
@@ -159,6 +157,7 @@ No markdown. No extra text. Only JSON.
     location: d.location ?? code.location ?? "",
   };
 
+  // Save to Firebase cache (fire-and-forget)
   saveOBDTranslationCache(translation).catch(() => {});
   return translation;
 }
@@ -170,54 +169,16 @@ export async function generateDiagnosticGuide(
   code: string,
   title: string,
   problem: string,
-  forceRefresh = false   // true = skip cache, generate fresh AI response
+  forceRefresh = false
 ): Promise<string | null> {
-  // 1. Check Firebase guide cache — skip if forceRefresh
+  // 1. Firebase cache check — skip on forceRefresh
   if (!forceRefresh) {
     try {
       const cached = await getOBDGuideCache(brandId, code);
-      if (cached?.guide) {
-        console.log(`[generateDiagnosticGuide] Cache hit: ${brandId}_${code}`);
-        return cached.guide;
-      }
-    } catch (e) {
-      console.warn("[generateDiagnosticGuide] Cache lookup failed:", (e as any)?.message);
-    }
-  } else {
-    console.log(`[generateDiagnosticGuide] Force refresh: ${brandId}_${code} — bypassing cache`);
+      if (cached?.guide) return cached.guide;
+    } catch {}
   }
 
-  // 2. Generate via AI with key-pool × model-waterfall
-  const prompt = buildGuidePrompt(brand, code, title, problem);
-
-  const guide = await runWithKeyPool({
-    feature: "guide",
-    run: async (genAI, modelName) => {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { maxOutputTokens: 8192, temperature: 1.0 },
-      });
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    },
-  });
-
-  if (!guide) return buildStaticFallback(brand, code, title);
-
-  // 3. Save to Firebase cache only on first-time generation (not on forceRefresh)
-  // forceRefresh = user wants a new variation — don't overwrite the permanent cache
-  if (!forceRefresh) {
-    saveOBDGuideCache({ code, brandId, brand, guide }).catch((e) =>
-      console.warn("[generateDiagnosticGuide] Guide cache save failed:", (e as any)?.message)
-    );
-  }
-
-  return guide;
-}
-
-// ─── Prompt Builders ──────────────────────────────────────────────────────────
-
-function buildGuidePrompt(brand: string, code: string, title: string, problem: string, clientVariation?: string): string {
   const variations = [
     "Focus more on electrical testing procedures this time.",
     "Focus more on mechanical inspection steps this time.",
@@ -228,9 +189,9 @@ function buildGuidePrompt(brand: string, code: string, title: string, problem: s
     "Focus more on step-by-step multimeter readings this time.",
     "Focus more on visual inspection techniques this time.",
   ];
-  const variation = clientVariation || variations[Math.floor(Math.random() * variations.length)];
+  const variation = variations[Math.floor(Math.random() * variations.length)];
 
-  return `
+  const prompt = `
 You are a SENIOR motorcycle ECU diagnostic engineer. Write a TECHNICAL diagnostic guide for a workshop mechanic.
 
 Bike Brand: ${brand}
@@ -244,108 +205,69 @@ NO Tamil script. NO pure English paragraphs.
 
 STRICT TONE RULES — NEVER violate these:
 - NO greetings like "Nanbargale", "Vanakkam", "Friends", "Vaanga" — start directly with technical content
-- NO phrases like "romba varsham ah", "ungaluku theriyum", "nalla theriyum", "experience irukku"
-- NO storytelling or personal introductions
 - NO filler sentences — every sentence must be a technical instruction or fact
 - Write like a technical manual, NOT like a person talking to an audience
-- First word of every section must be a technical term or action word
 
 Use EXACTLY this format:
 
 ## Enna Problem Irukkunu
-
-[3-4 sentences explaining what this code means technically, what the ECM detects, why it triggers. Be specific about the circuit/sensor involved.]
+[3-4 sentences explaining what this code means technically.]
 
 ## Possible Causes
-
-- **[Cause 1 name]:** [Detailed explanation in Tanglish]
-- **[Cause 2 name]:** [Detailed explanation]
-- **[Cause 3 name]:** [Detailed explanation]
-- **[Cause 4 name]:** [Detailed explanation]
-- **[Cause 5 name]:** [Detailed explanation]
-- **[Cause 6 name]:** [Detailed explanation]
+- **[Cause 1]:** [explanation]
+- **[Cause 2]:** [explanation]
+- **[Cause 3]:** [explanation]
+- **[Cause 4]:** [explanation]
+- **[Cause 5]:** [explanation]
 
 ## Symptoms — Bike-la Enna Therium
-
-- [Symptom 1 — what mechanic will observe]
+- [Symptom 1]
 - [Symptom 2]
 - [Symptom 3]
-- [Symptom 4]
-- [Symptom 5]
 
 ## Tools Vennum
-
-- **Multimeter:** [What to measure for this code]
-- **OBD Scanner:** [What to check]
-- **[Other tool if needed]:** [Purpose]
+- **Multimeter:** [what to measure]
+- **OBD Scanner:** [what to check]
 
 ## Step-by-Step Diagnosis
-
-**Step 1: Visual Inspection**
-[Detailed steps — what exactly to look for]
-
-**Step 2: Connector Check**
-[How to check connectors, cleaning procedure]
-
-**Step 3: Voltage/Resistance Test**
-[Exact multimeter readings — specify exact values like "5V reference vennum", "0.5-2 ohm resistance irukanum"]
-
-**Step 4: Sensor Test**
-[How to test the specific sensor/component]
-
-**Step 5: Wiring Continuity**
-[How to test wiring harness]
-
-**Step 6: ECM Signal Test**
-[How to verify ECM signal]
-
-**Step 7: [Additional step specific to this code]**
-[Details]
-
-**Step 8: [Additional step if needed]**
-[Details]
+**Step 1: Visual Inspection** [details]
+**Step 2: Connector Check** [details]
+**Step 3: Voltage/Resistance Test** [exact values]
+**Step 4: Sensor Test** [details]
+**Step 5: Wiring Continuity** [details]
 
 ## Repair Procedure
-
-**Option 1: [Most common fix]**
-[Detailed repair steps]
-
-**Option 2: [Second fix]**
-[Detailed repair steps]
-
-**Option 3: Wiring Repair**
-[If wiring is the cause]
+**Option 1:** [most common fix]
+**Option 2:** [second fix]
 
 ## Code Clear Panna
-
-[Steps to clear the DTC and verify the fix worked — include scan tool steps]
+[steps to clear DTC]
 
 ## Pro Tips — ${brand} Specific
-
-- [Tip 1 specific to this brand and code]
-- [Tip 2]
-- [Tip 3]
-
-Write every section with maximum detail. Each step must be complete enough to follow without any other reference.
+- [tip 1]
+- [tip 2]
   `.trim();
-}
 
-function buildStaticFallback(brand: string, code: string, title: string): string {
-  return `## ${code} — ${title}
+  const guide = await runWithKeyPool({
+    feature: "guide",
+    run: async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 8192, temperature: 0.9 },
+      });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      if (!text || text.trim().length < 50) throw new Error("Empty response");
+      return text;
+    },
+  });
 
-**Indha code varudhu endha ${title.toLowerCase()} related-a problem irukkunu indicate pannuthu.**
+  if (!guide) return null;
 
-## Basic Checks Pannunga
+  // Save to Firebase cache (fire-and-forget, skip on forceRefresh)
+  if (!forceRefresh) {
+    saveOBDGuideCache({ code, brandId, brand, guide }).catch(() => {});
+  }
 
-- **Wiring Inspection:** Harness-ai visually inspect pannunga — chafing, melting, loose connections ellam check pannunga
-- **Connector Check:** Related connector-ai disconnect panni corrosion, bent pins, moisture ellam parunga — WD40 spray panni reconnect pannunga
-- **Battery Voltage:** Multimeter use panni battery voltage check pannunga — 12.5V+ irukanum, engine running-la 13.8-14.4V irukanum
-- **Ground Points:** Engine earth straps tight-a irukka nu verify pannunga
-- **Related Sensor Resistance:** Service manual-la spec parunga, multimeter-la measure pannunga
-
-## Next Steps
-
-**${brand} service manual-ai refer pannunga** — specific torque values, wiring diagrams, component locations ellam anga irukku.
-
-Thoda detailed analysis-ku sila minutes wait panni "Refresh" click pannunga.`;
+  return guide;
 }
